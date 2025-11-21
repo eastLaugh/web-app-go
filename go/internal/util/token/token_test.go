@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	tokens "github.com/eastLaugh/web-app-go/go/internal/util/token"
+	"github.com/eastLaugh/web-app-go/go/internal/util/tokens"
 	"github.com/google/uuid"
 )
 
