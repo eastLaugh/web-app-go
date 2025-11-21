@@ -1,4 +1,5 @@
 go/dist
 go/go
 go/*.sum
+.vscode
 main

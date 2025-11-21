@@ -9,7 +9,6 @@ import (
 
 	"github.com/eastLaugh/web-app-go/go/server"
 	"github.com/eastLaugh/web-app-go/go/util"
-	"github.com/joho/godotenv"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -18,11 +17,6 @@ import (
 var dist embed.FS
 
 func main() {
-
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
 
 	local := flag.Bool("local", false, "使用本地文件系统而不是嵌入的文件系统")
 	flag.Parse()

@@ -11,11 +11,7 @@ import (
 	"strings"
 )
 
-var tokenPwd = os.Getenv("TOKEN_PWD")
-
-func init() {
-	tokenPwd = "dasuyhi2131"
-}
+var tokenPwd = os.Getenv("EASTLAUGH_TOKEN_PWD")
 
 type One struct {
 	Email  string `json:"email"`
