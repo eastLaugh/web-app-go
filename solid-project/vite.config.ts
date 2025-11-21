@@ -10,7 +10,7 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    outDir: '../go/dist',
+    outDir: '../go/cmd/server/dist',
     emptyOutDir: true,
   },
 });
