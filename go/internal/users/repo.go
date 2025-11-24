@@ -1,7 +1,6 @@
 package users
 
 import (
-	"context"
 	"database/sql"
 )
 
@@ -12,8 +11,8 @@ type User struct {
 }
 
 type IUserRepo interface {
-	Get(ctx context.Context, id int) (User, error)
-	Create(ctx context.Context, user User) (int, error)
+	GetByID(*User, int64) error
+	Create(user User) (int64, error)
 }
 
 var _ IUserRepo = SQLiteUserRepo{}
@@ -22,30 +21,20 @@ type SQLiteUserRepo struct {
 	Db *sql.DB
 }
 
-func (repo SQLiteUserRepo) Create(ctx context.Context, user User) (int, error) {
+func (repo SQLiteUserRepo) Create(user User) (int64, error) {
 	result, err := repo.Db.
-		ExecContext(ctx, "INSERT INTO users (email, name) VALUES (?, ?)", user.Email, user.Name)
+		Exec("INSERT INTO users (email, name) VALUES (?, ?)", user.Email, user.Name)
 
 	if err != nil {
 		return 0, err
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
-	return int(id), nil
+	return result.LastInsertId()
 }
 
-func (repo SQLiteUserRepo) Get(ctx context.Context, id int) (User, error) {
-	user := User{}
+func (repo SQLiteUserRepo) GetByID(user *User, id int64) error {
 	err := repo.Db.
-		QueryRowContext(ctx, "SELECT id, email, name FROM users WHERE id = ?", id).
+		QueryRow("SELECT id, email, name FROM users WHERE id = ?", id).
 		Scan(&user.ID, &user.Email, &user.Name)
-	if err != nil {
-		return User{}, err
-	}
-	return user, nil
+	return err
 
 }
-

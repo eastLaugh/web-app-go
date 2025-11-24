@@ -1,0 +1,21 @@
+### 创建用户
+POST http://localhost:8080/api/v1/users
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "name": "Test User"
+}
+
+### 获取用户 (替换 :id 为实际用户ID)
+GET http://localhost:8080/api/v1/users/1
+
+### 获取不存在的用户
+GET http://localhost:8080/api/v1/users/99999
+
+### 无效的用户ID
+GET http://localhost:8080/api/v1/users/invalid
+
+### Panic 测试端点
+GET http://localhost:8080/api/v1/panic
+

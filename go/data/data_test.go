@@ -5,7 +5,10 @@ import (
 	"os"
 	"testing"
 
+	"github.com/eastLaugh/web-app-go/go/internal/users"
 	_ "github.com/mattn/go-sqlite3"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestResetDB(t *testing.T) {
@@ -27,4 +30,15 @@ func TestResetDB(t *testing.T) {
 		"test",
 	)
 
+}
+
+func TestMigrate(t *testing.T) {
+	os.Remove("user.db")
+
+	db, err := gorm.Open(sqlite.Open("file:user.db?mode=memory"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db.AutoMigrate(&users.User{})
 }

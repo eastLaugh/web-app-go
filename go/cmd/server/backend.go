@@ -2,31 +2,50 @@ package main
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/eastLaugh/web-app-go/go/internal/users"
 )
 
-type IBackend interface {
+type HttpBackendServer interface {
 	GetUser(ctx context.Context, id int) (users.User, error)
 	CreateUser(ctx context.Context, user users.User) (int, error)
 }
 
-type BackendServer struct {
+type httpBackendServer struct {
 	userRepo users.IUserRepo
 	memoryKV map[string]string
+
+	app
 }
 
-func NewBackendServer(userRepo users.IUserRepo) IBackend {
-	return BackendServer{
+func newHttpBackendServer(userRepo users.IUserRepo) HttpBackendServer {
+	return &httpBackendServer{
 		userRepo: userRepo,
+		memoryKV: make(map[string]string),
 	}
 }
 
-func (b BackendServer) GetUser(ctx context.Context, id int) (users.User, error) {
-	return b.userRepo.Get(ctx, id)
+func NewHttpBackendServerWithSqlite() HttpBackendServer {
+
+	db, err := sql.Open("sqlite3", "data/user.db")
+	if err != nil {
+		panic(err)
+	}
+	// users.Migrate(db)
+	return newHttpBackendServer(users.SQLiteUserRepo{Db: db})
 }
 
-func (b BackendServer) CreateUser(ctx context.Context, user users.User) (int, error) {
-	return b.userRepo.Create(ctx, user)
+func (b *httpBackendServer) GetUser(ctx context.Context, id int) (users.User, error) {
+	var user users.User
+	err := b.userRepo.GetByID(&user, int64(id))
+	return user, err
 }
 
+func (b *httpBackendServer) CreateUser(ctx context.Context, user users.User) (int, error) {
+	id, err := b.userRepo.Create(user)
+	return int(id), err
+}
+
+type app struct {
+}

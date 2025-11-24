@@ -1,47 +1,36 @@
 package main
 
 import (
-	"database/sql"
 	"io/fs"
 	"net/http"
 	"strconv"
 
 	"github.com/eastLaugh/web-app-go/go/internal/users"
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 )
 
 func Serve(fsys fs.FS) {
 
-	//backend implements http.Handler
+	// HTTP服务器
+	// backend implements HttpBackendServer
 	backend := gin.New()
-	Registerar(backend, NewBackendServer(users.SQLiteUserRepo{
-		Db: func() *sql.DB {
-			db, err := sql.Open("sqlite3", "data/user.db")
-			if err != nil {
-				panic(err)
-			}
-			// 确保表存在且email字段有UNIQUE约束
-			db.Exec(`
-				CREATE TABLE IF NOT EXISTS users (
-					id INTEGER PRIMARY KEY AUTOINCREMENT, 
-					email TEXT UNIQUE, 
-					name TEXT
-				)
-			`)
-			return db
-		}(),
-	}))
-	http.Handle("/api/", backend)
+	RegisterMiddleware(backend)
+	RegisterRouter(backend, NewHttpBackendServerWithSqlite())
 
-	handler := http.FileServer(http.FS(fsys))
-	http.Handle("/app/", http.StripPrefix("/app/", handler))
+	// 文件服务器
+	http.Handle("/api/", backend)
+	http.Handle("/app/", http.StripPrefix("/app/", http.FileServer(http.FS(fsys))))
 	http.Handle("/", http.RedirectHandler("/app/", http.StatusTemporaryRedirect))
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		panic(err)
-	}
+	panic(http.ListenAndServe(":8080", nil))
 }
 
-func Registerar(router gin.IRouter, backend IBackend) {
+func RegisterMiddleware(engine *gin.Engine) {
+	engine.Use(gin.Recovery())
+	engine.Use(gin.LoggerWithWriter(logrus.StandardLogger().Writer()))
+}
+
+func RegisterRouter(router gin.IRouter, backend HttpBackendServer) {
 	//获取用户信息
 	router.GET("/api/v1/users/:id", func(ctx *gin.Context) {
 		id, err := strconv.Atoi(ctx.Param("id"))
@@ -72,5 +61,9 @@ func Registerar(router gin.IRouter, backend IBackend) {
 		}
 		ctx.JSON(http.StatusOK, gin.H{"id": id, "message": "user created"})
 	})
-}
 
+	//恐慌
+	router.GET("/api/v1/panic", func(ctx *gin.Context) {
+		panic(nil)
+	})
+}

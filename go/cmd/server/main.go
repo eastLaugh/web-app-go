@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"time"
 
 	"github.com/eastLaugh/web-app-go/go/internal/util"
 	"github.com/gin-gonic/gin"
@@ -18,6 +19,11 @@ import (
 var dist embed.FS
 
 func init() {
+	logrus.SetLevel(logrus.DebugLevel)
+	logrus.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp:   true,
+		TimestampFormat: time.DateTime,
+	})
 	gin.DefaultWriter = logrus.StandardLogger().Writer()
 }
 
