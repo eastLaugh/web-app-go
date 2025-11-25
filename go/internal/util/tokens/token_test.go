@@ -1,6 +1,8 @@
 package tokens_test
 
 import (
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -30,4 +32,17 @@ func TestPayload(t *testing.T) {
 		t.Fatal("token not equal")
 	}
 
+}
+
+func TestPayload_Export(t *testing.T) {
+	os.Setenv("EASTLAUGH_TOKEN_PWD", "12312dsaa")
+	payload := tokens.Payload{
+		Email:  uuid.New().String(),
+		Expire: time.Now().Add(1 * time.Hour).Unix(),
+	}
+	token, err := payload.Export()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(token)
 }

@@ -1,0 +1,154 @@
+# yaml-language-server: $schema=https://spec.openapis.org/oas/3.0/schema/2021-09-28
+openapi: 3.0.3
+info:
+  title: Web App API
+  version: 1.0.0
+  description: 博客应用 API
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: 本地开发服务器
+
+paths:
+  # 认证（登录/注册）
+  /auth:
+    post:
+      summary: 邮箱验证码认证
+      description: 使用邮箱+验证码进行认证，无需区分注册和登录
+      tags:
+        - 认证
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
+      responses:
+        '200':
+          description: 认证成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  # 评论相关 API
+  /posts:
+    post:
+      summary: 创建评论
+      tags:
+        - 评论
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostRequest'
+      responses:
+        '200':
+          description: 评论创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  message:
+                    type: string
+                    example: "post created"
+
+    get:
+      summary: 获取评论列表
+      description: 通过博客文件名获取该博客的所有评论
+      tags:
+        - 评论
+      parameters:
+        - name: file
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 博客文件名，如 post.md
+          example: "post.md"
+      responses:
+        '200':
+          description: 评论列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Post'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    AuthRequest:
+      type: object
+      required:
+        - email
+        - code
+      properties:
+        email:
+          type: string
+          format: email
+          description: 邮箱
+          example: "user@example.com"
+        code:
+          type: string
+          description: 验证码
+          example: "123456"
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: 认证令牌
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    CreatePostRequest:
+      type: object
+      required:
+        - file
+        - content
+      properties:
+        file:
+          type: string
+          description: 博客文件名
+          example: "hello-world.md"
+        content:
+          type: string
+          description: 评论内容
+          example: "这是一条评论"
+
+    Post:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        file:
+          type: string
+          description: 博客文件名
+          example: "post.md"
+        content:
+          type: string
+          description: 评论内容
+          example: "这是一条评论"
+        email:
+          type: string
+          format: email
+          description: 邮箱
+          example: "user@example.com"
+        created_at:
+          type: string
+          format: date-time
+          description: 创建时间

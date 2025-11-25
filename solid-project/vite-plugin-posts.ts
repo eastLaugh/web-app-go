@@ -12,10 +12,13 @@ const getPosts = () => {
   const files = readdirSync(publicDir).filter((f) => f.endsWith('.md'));
   return files.map((file) => {
     const content = readFileSync(join(publicDir, file), 'utf-8');
+    const stats = statSync(join(publicDir, file));
+    // birthtime 在 Linux 上可能不可用，回退到 mtime
+    const time = stats.birthtime.getTime() > 0 ? stats.birthtime : stats.mtime;
     return {
       file,
       title: getTitle(content),
-      time: statSync(join(publicDir, file)).mtime.toISOString(),
+      time: time.toISOString(),
     };
   });
 };
