@@ -12,3 +12,5 @@ services:
 
 # volumes:
 #   mysql_data:
+
+# docker run -d --name webapp-mysql -e MYSQL_ALLOW_EMPTY_PASSWORD=yes -e MYSQL_DATABASE=webapp -p 3307:3306 mysql:8.0

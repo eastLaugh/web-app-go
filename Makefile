@@ -1,7 +1,6 @@
 
 BINARY := server
 G0_SRC := $(shell find go -name "*.go")
-
 run: $(BINARY)
 	./$(BINARY)
 

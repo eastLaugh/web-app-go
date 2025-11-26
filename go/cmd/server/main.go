@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	lib "github.com/eastLaugh/web-app-go/go"
 	"github.com/eastLaugh/web-app-go/go/api"
 	"github.com/eastLaugh/web-app-go/go/cmd/server/ports"
 	"github.com/eastLaugh/web-app-go/go/internal/util"
@@ -23,6 +24,7 @@ import (
 var dist embed.FS
 
 func init() {
+
 	logrus.SetLevel(logrus.DebugLevel)
 	logrus.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp:   true,
@@ -31,6 +33,8 @@ func init() {
 	})
 	gin.DefaultWriter = logrus.StandardLogger().Writer()
 	gin.DefaultErrorWriter = logrus.StandardLogger().Writer()
+
+	lib.LoadEnv(logrus.StandardLogger().Writer())
 }
 
 func main() {

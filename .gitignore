@@ -4,4 +4,4 @@ go/*.sum
 main
 /server
 go/.env
-.idea
+.idea/
