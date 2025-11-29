@@ -65,13 +65,6 @@ jobs:
           # 等待进程完全停止
           sleep 2
           
-          # 检查是否还有进程在运行
-          if pgrep -f "./server_binary" > /dev/null 2>&1; then
-            echo "警告: 仍有旧进程在运行，强制终止..."
-            pkill -9 -f "./server_binary" 2>/dev/null || true
-            sleep 1
-          fi
-          
           # 启动新服务（后台运行）
           echo "启动新服务..."
           nohup ./server_binary > nohup.out 2>&1 &
