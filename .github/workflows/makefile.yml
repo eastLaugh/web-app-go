@@ -24,7 +24,7 @@ jobs:
       with:
         name: server_binary
         path: server_binary
-        retention-days: 30
+        retention-days: 7
 
     - name: 部署到服务器
       uses: appleboy/scp-action@v0.1.7
@@ -42,8 +42,8 @@ jobs:
         host: ${{ secrets.SSH_HOST }}
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
+        timeout: 60s
         script: |
-          set -e
           cd /root/www
           echo "当前目录: $(pwd)"
           echo "文件列表:"
@@ -59,35 +59,36 @@ jobs:
           chmod +x ./server_binary
           echo "文件权限: $(ls -l ./server_binary)"
           
-          # 停止旧进程
+          # 停止旧进程（忽略错误）
           echo "停止旧进程..."
-          pkill -f "./server_binary" || true
+          pkill -f "./server_binary" 2>/dev/null || true
           # 等待进程完全停止
           sleep 2
           
           # 检查是否还有进程在运行
-          if pgrep -f "./server_binary" > /dev/null; then
+          if pgrep -f "./server_binary" > /dev/null 2>&1; then
             echo "警告: 仍有旧进程在运行，强制终止..."
-            pkill -9 -f "./server_binary" || true
+            pkill -9 -f "./server_binary" 2>/dev/null || true
             sleep 1
           fi
           
           # 启动新服务（后台运行）
           echo "启动新服务..."
           nohup ./server_binary > nohup.out 2>&1 &
-          echo "进程 PID: $!"
+          SERVER_PID=$!
+          echo "进程 PID: $SERVER_PID"
           
           # 等待服务启动
           sleep 3
           
           # 检查服务是否运行
-          if pgrep -f "./server_binary" > /dev/null; then
+          if pgrep -f "./server_binary" > /dev/null 2>&1; then
             echo "✓ 服务启动成功"
             echo "运行中的进程:"
-            ps aux | grep -E "server_binary" | grep -v grep
+            ps aux | grep -E "server_binary" | grep -v grep || true
           else
             echo "✗ 服务启动失败"
             echo "查看日志:"
-            tail -30 nohup.out || echo "无法读取日志文件"
+            tail -30 nohup.out 2>/dev/null || echo "无法读取日志文件"
             exit 1
           fi
