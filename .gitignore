@@ -5,3 +5,4 @@ main
 /server
 go/.env
 .idea/
+automation.sh
