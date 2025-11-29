@@ -1,3 +1,5 @@
+
+-- 
 -- 创建 posts 表
 CREATE TABLE IF NOT EXISTS posts (
     id INT AUTO_INCREMENT PRIMARY KEY,

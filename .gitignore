@@ -1,6 +1,6 @@
 go/go
 go/*.sum
-.vscode
+# .vscode
 main
 /server_binary
 go/.env
