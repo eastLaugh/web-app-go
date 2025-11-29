@@ -18,3 +18,45 @@ jobs:
 
     - name: 生成单文件可执行程序
       run: make server_binary
+
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: server_binary
+        path: server_binary
+        retention-days: 30
+
+    - name: 部署到服务器
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        source: "server_binary"
+        target: "/root/www/server_binary"
+        strip_components: 0
+
+    - name: 重启服务
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd /root/www
+          # 停止旧进程
+          pkill -f "./server_binary" || true
+          # 等待进程完全停止
+          sleep 2
+          # 启动新服务（后台运行）
+          nohup ./server_binary > nohup.out 2>&1 &
+          # 等待服务启动
+          sleep 2
+          # 检查服务是否运行
+          if pgrep -f "./server_binary" > /dev/null; then
+            echo "服务启动成功"
+          else
+            echo "服务启动失败，查看日志："
+            tail -20 nohup.out
+            exit 1
+          fi
