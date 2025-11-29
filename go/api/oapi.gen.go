@@ -20,6 +20,13 @@ const (
 // ServerUrl defines the Server URL for 本地开发服务器
 const ServerUrl = "http://localhost:8080/api/v1"
 
+// Defines values for ChatRequestMessagesRole.
+const (
+	Assistant ChatRequestMessagesRole = "assistant"
+	System    ChatRequestMessagesRole = "system"
+	User      ChatRequestMessagesRole = "user"
+)
+
 // AuthRequest defines model for AuthRequest.
 type AuthRequest struct {
 	// Code 验证码
@@ -34,6 +41,21 @@ type AuthResponse struct {
 	// Token 认证令牌
 	Token *string `json:"token,omitempty"`
 }
+
+// ChatRequest defines model for ChatRequest.
+type ChatRequest struct {
+	// Messages 对话消息列表
+	Messages []struct {
+		// Content 消息内容
+		Content string `json:"content"`
+
+		// Role 消息角色
+		Role ChatRequestMessagesRole `json:"role"`
+	} `json:"messages"`
+}
+
+// ChatRequestMessagesRole 消息角色
+type ChatRequestMessagesRole string
 
 // CreatePostRequest defines model for CreatePostRequest.
 type CreatePostRequest struct {
@@ -69,6 +91,9 @@ type GetPostsParams struct {
 // PostAuthJSONRequestBody defines body for PostAuth for application/json ContentType.
 type PostAuthJSONRequestBody = AuthRequest
 
+// PostChatJSONRequestBody defines body for PostChat for application/json ContentType.
+type PostChatJSONRequestBody = ChatRequest
+
 // PostPostsJSONRequestBody defines body for PostPosts for application/json ContentType.
 type PostPostsJSONRequestBody = CreatePostRequest
 
@@ -77,6 +102,9 @@ type ServerInterface interface {
 	// 邮箱验证码认证
 	// (POST /auth)
 	PostAuth(c *gin.Context)
+	// 聊天对话
+	// (POST /chat)
+	PostChat(c *gin.Context)
 	// 获取评论列表
 	// (GET /posts)
 	GetPosts(c *gin.Context, params GetPostsParams)
@@ -105,6 +133,19 @@ func (siw *ServerInterfaceWrapper) PostAuth(c *gin.Context) {
 	}
 
 	siw.Handler.PostAuth(c)
+}
+
+// PostChat operation middleware
+func (siw *ServerInterfaceWrapper) PostChat(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostChat(c)
 }
 
 // GetPosts operation middleware
@@ -183,6 +224,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	}
 
 	router.POST(options.BaseURL+"/auth", wrapper.PostAuth)
+	router.POST(options.BaseURL+"/chat", wrapper.PostChat)
 	router.GET(options.BaseURL+"/posts", wrapper.GetPosts)
 	router.POST(options.BaseURL+"/posts", wrapper.PostPosts)
 }

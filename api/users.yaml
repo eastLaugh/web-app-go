@@ -31,6 +31,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
 
+  # 聊天 API
+  /chat:
+    post:
+      summary: 聊天对话
+      description: 与 AI 进行对话，支持多轮对话和流式输出
+      tags:
+        - 聊天
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: 流式响应
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
   # 评论相关 API
   /posts:
     post:
@@ -128,6 +149,28 @@ components:
           type: string
           description: 评论内容
           example: "这是一条评论"
+
+    ChatRequest:
+      type: object
+      required:
+        - messages
+      properties:
+        messages:
+          type: array
+          description: 对话消息列表
+          items:
+            type: object
+            required:
+              - role
+              - content
+            properties:
+              role:
+                type: string
+                enum: [system, user, assistant]
+                description: 消息角色
+              content:
+                type: string
+                description: 消息内容
 
     Post:
       type: object

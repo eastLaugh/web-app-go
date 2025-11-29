@@ -2,6 +2,7 @@ import type { Component } from 'solid-js';
 import { createSignal, createEffect, onMount } from 'solid-js';
 import { marked } from 'marked';
 import { login, createPost, getPosts } from './api';
+import ChatBox, { collapseChat } from './ChatBox';
 import './App.css';
 
 const App: Component = () => {
@@ -91,7 +92,15 @@ const App: Component = () => {
           )}
         </div>
       </header>
-      <main class="blog-content">
+      <main class="blog-content" onClick={(e) => {
+        // 点击正文内容时收起聊天
+        const target = e.target as HTMLElement;
+        if (target.closest('.post-body') || target.closest('.post-list') || target.closest('.post-item')) {
+          if (collapseChat) {
+            collapseChat();
+          }
+        }
+      }}>
         {!currentFile() ? (
           <div class="post-list">
             {posts().map((p) => (
@@ -186,9 +195,10 @@ const App: Component = () => {
           </div>
         </div>
       )}
-      <div style="margin-top: 40px; text-align: center; font-size: 12px;">
+      <div style="margin-top: 40px; text-align: center; font-size: 12px; padding-bottom: 100px;">
         <a href="mailto:east_laugh@qq.com" style="color: #000; text-decoration: none;">east_laugh@qq.com</a>
       </div>
+      <ChatBox />
     </div>
   );
 };
