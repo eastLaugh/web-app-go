@@ -6,3 +6,4 @@ main
 go/.env
 .idea/
 automation.sh
+/.env

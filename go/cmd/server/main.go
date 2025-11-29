@@ -9,12 +9,12 @@ import (
 	"os"
 	"time"
 
-	lib "github.com/eastLaugh/web-app-go/go"
 	"github.com/eastLaugh/web-app-go/go/api"
 	"github.com/eastLaugh/web-app-go/go/cmd/server/ports"
 	"github.com/eastLaugh/web-app-go/go/internal/util"
 	"github.com/eastLaugh/web-app-go/go/internal/util/tokens"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -34,7 +34,10 @@ func init() {
 	gin.DefaultWriter = logrus.StandardLogger().Writer()
 	gin.DefaultErrorWriter = logrus.StandardLogger().Writer()
 
-	lib.LoadEnv(logrus.StandardLogger().Writer())
+	err := godotenv.Load()
+	if err != nil {
+		logrus.Errorf("未加载 .env 文件: %v", err)
+	}
 }
 
 func main() {
