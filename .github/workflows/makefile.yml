@@ -33,7 +33,7 @@ jobs:
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         source: "server_binary"
-        target: "/root/www/server_binary"
+        target: "/root/www/"
         strip_components: 0
 
     - name: 重启服务
