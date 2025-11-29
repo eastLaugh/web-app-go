@@ -43,20 +43,51 @@ jobs:
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
+          set -e
           cd /root/www
+          echo "当前目录: $(pwd)"
+          echo "文件列表:"
+          ls -lah
+          
+          # 检查文件是否存在
+          if [ ! -f "./server_binary" ]; then
+            echo "错误: server_binary 文件不存在"
+            exit 1
+          fi
+          
+          # 确保文件有执行权限
+          chmod +x ./server_binary
+          echo "文件权限: $(ls -l ./server_binary)"
+          
           # 停止旧进程
+          echo "停止旧进程..."
           pkill -f "./server_binary" || true
           # 等待进程完全停止
           sleep 2
+          
+          # 检查是否还有进程在运行
+          if pgrep -f "./server_binary" > /dev/null; then
+            echo "警告: 仍有旧进程在运行，强制终止..."
+            pkill -9 -f "./server_binary" || true
+            sleep 1
+          fi
+          
           # 启动新服务（后台运行）
+          echo "启动新服务..."
           nohup ./server_binary > nohup.out 2>&1 &
+          echo "进程 PID: $!"
+          
           # 等待服务启动
-          sleep 2
+          sleep 3
+          
           # 检查服务是否运行
           if pgrep -f "./server_binary" > /dev/null; then
-            echo "服务启动成功"
+            echo "✓ 服务启动成功"
+            echo "运行中的进程:"
+            ps aux | grep -E "server_binary" | grep -v grep
           else
-            echo "服务启动失败，查看日志："
-            tail -20 nohup.out
+            echo "✗ 服务启动失败"
+            echo "查看日志:"
+            tail -30 nohup.out || echo "无法读取日志文件"
             exit 1
           fi
