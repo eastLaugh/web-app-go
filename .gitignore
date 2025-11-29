@@ -2,7 +2,7 @@ go/go
 go/*.sum
 .vscode
 main
-/server
+/server_binary
 go/.env
 .idea/
 automation.sh
