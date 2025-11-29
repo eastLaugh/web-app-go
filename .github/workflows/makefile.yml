@@ -61,7 +61,7 @@ jobs:
           
           # 停止旧进程（忽略错误）
           echo "停止旧进程..."
-          pkill -f "./server_binary" 2>/dev/null || true
+          pkill -x "server_binary" || true
           # 等待进程完全停止
           sleep 2
           
