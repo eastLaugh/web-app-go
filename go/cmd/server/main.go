@@ -85,7 +85,7 @@ func Serve(fsys fs.FS) {
 	// 文件服务器
 	http.Handle("/app/", http.StripPrefix("/app/", http.FileServer(http.FS(fsys))))
 	http.Handle("/", http.RedirectHandler("/app/", http.StatusTemporaryRedirect))
-	panic(http.ListenAndServe(":8080", nil))
+	panic(http.ListenAndServe(":80", nil))
 }
 
 func initDB() *sql.DB {
