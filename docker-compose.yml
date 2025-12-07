@@ -1,0 +1,62 @@
+services:
+
+  webapp:
+    build: .
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      # - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+    environment:
+      EASTLAUGH_TOKEN_PWD: ${EASTLAUGH_TOKEN_PWD}
+      EASTLAUGH_DATABASE_DRIVER: ${EASTLAUGH_DATABASE_DRIVER}
+      EASTLAUGH_DATABASE_DSN: root:@tcp(mysql:3306)/webapp?charset=utf8mb4&parseTime=True&loc=Local
+      # EASTLAUGH_DATABASE_DSN: ${EASTLAUGH_DATABASE_DSN}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      EASTLAUGH_MONGODB_URI: mongodb://mongo:27017/webapp
+      EASTLAUGH_PORT: :80
+
+
+  mysql:
+    image: mysql:8.0
+    container_name: webapp-mysql
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: webapp
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongo:
+    image: mongo
+    ports:
+      - "27017:27017"
+    # environment:
+      # MONGO_INITDB_ROOT_USERNAME: root
+      # MONGO_INITDB_ROOT_PASSWORD: example
+
+
+  mongo-express:
+    image: mongo-express
+    ports:
+      - 8081:8081
+    environment:
+      # ME_CONFIG_BASICAUTH: false
+      # ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: root
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_ROOT_PASSWORD}
+
+volumes:
+  mysql_data:
+
+# docker run -d --name webapp-mysql -e MYSQL_ALLOW_EMPTY_PASSWORD=yes -e MYSQL_DATABASE=webapp -p 3307:3306 mysql:8.0

@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/sirupsen/logrus"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 var _ api.ServerInterface = server{}
@@ -23,10 +24,13 @@ var _ api.ServerInterface = server{}
 type server struct {
 	db     *sql.DB
 	tokens map[string]string
+	mg     *mongo.Client
 }
 
-func NewServer(db *sql.DB) *server {
-	return &server{db: db}
+func NewServer(db *sql.DB, mg *mongo.Client) (*server, func()) {
+	return &server{db: db, mg: mg}, func() {
+		db.Close()
+	}
 }
 
 // PostAuth implements api.ServerInterface.
@@ -76,7 +80,6 @@ func (s server) GetPosts(c *gin.Context, params api.GetPostsParams) {
 	c.JSON(http.StatusOK, posts)
 }
 
-// PostPosts implements api.ServerInterface.
 func (s server) PostPosts(c *gin.Context) {
 	email := c.GetString("email")
 
@@ -93,6 +96,12 @@ func (s server) PostPosts(c *gin.Context) {
 	logrus.Infof("[ %s := %s ] %s\n", email, req.File, req.Content)
 	c.JSON(http.StatusOK, gin.H{"message": "success"})
 
+	// email := c.GetString("email")
+	// req := new(api.PostPostsJSONRequestBody)
+	// if err := c.ShouldBindJSON(req); err != nil {
+	// 	c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	// 	return
+	// }
 }
 
 func (s server) InsertPost(ctx context.Context, email string, content string, file string) error {
@@ -104,7 +113,6 @@ func (s server) InsertPost(ctx context.Context, email string, content string, fi
 	return nil
 }
 
-// PostChat implements api.ServerInterface.
 func (s server) PostChat(c *gin.Context) {
 	var request api.PostChatJSONRequestBody
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -216,7 +224,4 @@ func (s server) PostChat(c *gin.Context) {
 			return
 		}
 	}
-}
-
-func (s *server) Close() {
 }

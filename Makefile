@@ -2,8 +2,8 @@ BINARY := server_binary
 
 G0_SRC := $(shell find go -name "*.go")
 run: $(BINARY)
-	./$(BINARY)
-
+	docker compose -f 'docker-compose.yml' up -d --build --force-recreate
+	
 $(BINARY): go/cmd/server/dist $(G0_SRC)
 	cd go && go mod tidy && go build -o ../$(BINARY) ./cmd/server
 

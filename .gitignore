@@ -7,3 +7,4 @@ go/.env
 .idea/
 automation.sh
 /.env
+go/server
