@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/api"
-	"github.com/eastLaugh/web-app-go/go/internal/util/tokens"
+	"github.com/eastLaugh/web-app-go/go/internal/repo"
+	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
 	"github.com/gin-gonic/gin"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
@@ -22,15 +22,20 @@ import (
 var _ api.ServerInterface = server{}
 
 type server struct {
-	db     *sql.DB
-	tokens map[string]string
-	mg     *mongo.Client
+	postRepo repo.PostRepo
+	mg       *mongo.Client
+	db       *sql.DB // 保留用于关闭连接
 }
 
 func NewServer(db *sql.DB, mg *mongo.Client) (*server, func()) {
-	return &server{db: db, mg: mg}, func() {
-		db.Close()
-	}
+	postRepo := repo.NewMySQLPostRepo(db)
+	return &server{
+			postRepo: postRepo,
+			mg:       mg,
+			db:       db,
+		}, func() {
+			db.Close()
+		}
 }
 
 // PostAuth implements api.ServerInterface.
@@ -55,27 +60,10 @@ func (s server) PostAuth(c *gin.Context) {
 
 // GetPosts implements api.ServerInterface.
 func (s server) GetPosts(c *gin.Context, params api.GetPostsParams) {
-	rows, err := s.db.QueryContext(c.Request.Context(),
-		"SELECT id, file, content, email, created_at FROM posts WHERE file = ? ORDER BY created_at ASC",
-		params.File)
+	posts, err := s.postRepo.GetPostsByFile(c.Request.Context(), params.File)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
-	}
-	defer rows.Close()
-
-	var posts []api.Post
-	for rows.Next() {
-		var p api.Post
-		var createdAt time.Time
-		var email string
-		if err := rows.Scan(&p.Id, &p.File, &p.Content, &email, &createdAt); err != nil {
-			continue
-		}
-		emailVal := openapi_types.Email(email)
-		p.Email = &emailVal
-		p.CreatedAt = &createdAt
-		posts = append(posts, p)
 	}
 	c.JSON(http.StatusOK, posts)
 }
@@ -88,29 +76,13 @@ func (s server) PostPosts(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := s.InsertPost(context.TODO(), email, req.Content, req.File); err != nil {
+	if err := s.postRepo.InsertPost(context.TODO(), email, req.Content, req.File); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	logrus.Infof("[ %s := %s ] %s\n", email, req.File, req.Content)
 	c.JSON(http.StatusOK, gin.H{"message": "success"})
-
-	// email := c.GetString("email")
-	// req := new(api.PostPostsJSONRequestBody)
-	// if err := c.ShouldBindJSON(req); err != nil {
-	// 	c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	// 	return
-	// }
-}
-
-func (s server) InsertPost(ctx context.Context, email string, content string, file string) error {
-	_, err := s.db.ExecContext(ctx, "INSERT INTO posts (email, content, file) VALUES (?, ?, ?)", email, content, file)
-	if err != nil {
-		logrus.Errorf("插入评论失败: %v", err)
-		return err
-	}
-	return nil
 }
 
 func (s server) PostChat(c *gin.Context) {

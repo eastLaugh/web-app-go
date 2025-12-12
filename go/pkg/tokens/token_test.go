@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/eastLaugh/web-app-go/go/internal/util/tokens"
+	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
 	"github.com/google/uuid"
 )
 

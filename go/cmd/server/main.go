@@ -13,7 +13,7 @@ import (
 
 	"github.com/eastLaugh/web-app-go/go/api"
 	"github.com/eastLaugh/web-app-go/go/cmd/server/ports"
-	"github.com/eastLaugh/web-app-go/go/internal/util/tokens"
+	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"

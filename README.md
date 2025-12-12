@@ -7,4 +7,4 @@ Makefile构建单文件，SCP上传。需手动启动其他服务
 
 先运行 make 构建单文件二进制
 
-然后允许 docker compose up
+然后允许 docker compose up -d
