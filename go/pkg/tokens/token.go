@@ -1,6 +1,7 @@
 package tokens
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/api"
-	"github.com/gin-gonic/gin"
 )
 
 var tokenPwd = os.Getenv("EASTLAUGH_TOKEN_PWD")
@@ -64,34 +64,46 @@ func (t *Payload) Import(token string) error {
 	return json.Unmarshal(payload, t)
 }
 
-func Middleware(ctx *gin.Context) {
-	// logrus.Debugf("Middleware: %v", ctx.Request.URL.Path)
-	_, ok := ctx.Get(api.BearerAuthScopes)
-	if !ok {
-		ctx.Next()
-		return
-	}
+// Middleware 返回一个标准库风格的中间件
+func Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 检查是否需要认证
+		scopes := r.Context().Value(api.BearerAuthScopes)
+		if scopes == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
 
-	token := ctx.GetHeader("Authorization")
-	if token == "" {
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
-		return
-	}
-	token = strings.TrimPrefix(token, "Bearer ")
-	if token == "" {
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
-		return
-	}
-	var payload Payload
-	err := payload.Import(token)
-	if err != nil {
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-	if payload.Expire < time.Now().Unix() {
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token 已过期"})
-		return
-	}
-	ctx.Set("email", payload.Email)
-	ctx.Next()
+		token := r.Header.Get("Authorization")
+		if token == "" {
+			writeError(w, http.StatusUnauthorized, "未授权")
+			return
+		}
+		token = strings.TrimPrefix(token, "Bearer ")
+		if token == "" {
+			writeError(w, http.StatusUnauthorized, "未授权")
+			return
+		}
+		var payload Payload
+		err := payload.Import(token)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, err.Error())
+			return
+		}
+		if payload.Expire < time.Now().Unix() {
+			writeError(w, http.StatusUnauthorized, "token 已过期")
+			return
+		}
+		// 将 email 存储到 context 中
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, "email", payload.Email)
+		r = r.WithContext(ctx)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func writeError(w http.ResponseWriter, statusCode int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }

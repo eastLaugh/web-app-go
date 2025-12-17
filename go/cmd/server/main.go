@@ -14,7 +14,6 @@ import (
 	"github.com/eastLaugh/web-app-go/go/api"
 	"github.com/eastLaugh/web-app-go/go/cmd/server/ports"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
-	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -28,21 +27,14 @@ import (
 var dist embed.FS
 
 func init() {
+	_ = godotenv.Load()
 
 	logrus.SetLevel(logrus.DebugLevel)
 	logrus.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp:   true,
+		FullTimestamp:   false,
 		TimestampFormat: time.DateTime,
 		ForceColors:     true,
 	})
-	// gin.DefaultWriter = logrus.StandardLogger().Writer()
-	// gin.DefaultErrorWriter = logrus.StandardLogger().Writer()
-
-	err := godotenv.Load()
-	if err != nil {
-		logrus.Infof("未加载本地 .env 文件: %v", err)
-	}
-
 }
 
 func main() {
@@ -60,38 +52,58 @@ func main() {
 
 	go Serve(fsys)
 
-	//util.OpenURL("http://localhost:8080")
-
 	select {}
 }
 
 func Serve(fsys fs.FS) {
-
-	// HTTP服务器
-	v1 := gin.New()
-	v1.Use(gin.Recovery())
-	v1.Use(gin.LoggerWithWriter(logrus.StandardLogger().Writer()))
-	v1.GET("/panic", func(c *gin.Context) {
-		panic("panic test")
-	})
-
 	server, cancel := ports.NewServer(initDB(), initMongo())
 	defer cancel()
 
-	api.RegisterHandlersWithOptions(v1, server, api.GinServerOptions{
-		BaseURL:     "/api/v1/",
+	// 创建主路由
+	mux := http.NewServeMux()
+
+	// API 路由，使用标准库风格的 handler
+	mux.Handle("/api/v1/", http.StripPrefix("/api/v1", api.HandlerWithOptions(server, api.StdHTTPServerOptions{
 		Middlewares: []api.MiddlewareFunc{tokens.Middleware},
+	})))
+
+	// 测试 panic 路由
+	mux.HandleFunc("GET /panic", func(w http.ResponseWriter, r *http.Request) {
+		panic("panic test")
 	})
 
-	http.Handle("/api/v1/", v1)
-
 	// 文件服务器
-	http.Handle("/app/", http.StripPrefix("/app/", http.FileServer(http.FS(fsys))))
-	http.Handle("/", http.RedirectHandler("/app/", http.StatusTemporaryRedirect))
+	mux.Handle("/app/", http.StripPrefix("/app/", http.FileServer(http.FS(fsys))))
+	mux.Handle("/", http.RedirectHandler("/app/", http.StatusTemporaryRedirect))
+
+	// 添加日志和恢复中间件
+	handler := loggingMiddleware(recoveryMiddleware(mux))
 
 	port := os.Getenv("EASTLAUGH_PORT")
 	logrus.Infof("监听于 %s", port)
-	panic(http.ListenAndServe(port, nil))
+	panic(http.ListenAndServe(port, handler))
+}
+
+// loggingMiddleware 添加请求日志
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		logrus.Infof("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+	})
+}
+
+// recoveryMiddleware 恢复 panic
+func recoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				logrus.Errorf("Panic recovered: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 func initMongo() *mongo.Client {
@@ -115,7 +127,7 @@ func initMongo() *mongo.Client {
 	}()
 	// Sends a ping to confirm a successful connection
 	var result bson.M
-	if err := client.Database("admin").RunCommand(context.TODO(), bson.D{{"ping", 1}}).Decode(&result); err != nil {
+	if err := client.Database("admin").RunCommand(context.TODO(), bson.D{{Key: "ping", Value: 1}}).Decode(&result); err != nil {
 		panic(err)
 	}
 	logrus.Info("MongoDB 连接成功")

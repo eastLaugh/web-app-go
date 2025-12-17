@@ -5,8 +5,23 @@ import { login, createPost, getPosts } from './api';
 import ChatBox, { collapseChat } from './ChatBox';
 import './App.css';
 
+const Good: Component<{ title: string; url: string; description?: string }> = (props) => (
+  <div class="post-item">
+    <a href={props.url} target="_blank" rel="noopener noreferrer" style="color: #000; text-decoration: none; display: block;">
+      <div style="font-weight: 500; margin-bottom: 4px;">{props.title}</div>
+      {props.description && <div style="font-size: 13px; color: #666;">{props.description}</div>}
+    </a>
+  </div>
+);
+
+const goods = [
+  <Good title="示例链接" url="https://example.com" description="这是一个示例链接" />,
+];
+
 const App: Component = () => {
-  const [currentFile, setCurrentFile] = createSignal(window.location.hash.slice(1));
+  const hash = window.location.hash.slice(1);
+  const [currentPage, setCurrentPage] = createSignal(hash.startsWith('goods') ? 'goods' : 'blog');
+  const [currentFile, setCurrentFile] = createSignal(hash.startsWith('goods') ? '' : hash);
   const [htmlContent, setHtmlContent] = createSignal('');
   const [posts, setPosts] = createSignal<{ file: string; title: string; time: string }[]>([]);
   const [token, setToken] = createSignal(localStorage.getItem('token') || '');
@@ -68,15 +83,24 @@ const App: Component = () => {
     }
   };
 
-  window.addEventListener('hashchange', () => setCurrentFile(window.location.hash.slice(1)));
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash.slice(1);
+    setCurrentPage(hash.startsWith('goods') ? 'goods' : 'blog');
+    setCurrentFile(hash.startsWith('goods') ? '' : hash);
+  });
 
   return (
     <div class="blog">
       <header class="blog-header">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h1 onClick={() => (window.location.hash = '')} style="cursor: pointer;">
-            Blog
-          </h1>
+          <div style="display: flex; gap: 20px;">
+            <h1 onClick={() => { window.location.hash = ''; setCurrentPage('blog'); }} style="cursor: pointer; opacity: currentPage() === 'blog' ? 1 : 0.5;">
+              Blog
+            </h1>
+            <h1 onClick={() => { window.location.hash = 'goods'; setCurrentPage('goods'); }} style="cursor: pointer; opacity: currentPage() === 'goods' ? 1 : 0.5;">
+              Goods
+            </h1>
+          </div>
           {token() ? (
             <span style="font-size: 12px; cursor: pointer;" onClick={(e) => {
               setToken('');
@@ -101,7 +125,11 @@ const App: Component = () => {
           }
         }
       }}>
-        {!currentFile() ? (
+        {currentPage() === 'goods' ? (
+          <div class="post-list">
+            {goods}
+          </div>
+        ) : !currentFile() ? (
           <div class="post-list">
             {posts().map((p) => (
               <div class="post-item" onClick={() => (window.location.hash = p.file)}>

@@ -2,7 +2,7 @@
 package: api
 output: "oapi.gen.go"
 generate:
-  gin-server: true
+  std-http-server: true
   models: true
   server-urls: true
   # strict-server: true
