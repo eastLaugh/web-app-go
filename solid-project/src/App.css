@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 * {
   margin: 0;
   padding: 0;
@@ -9,6 +11,8 @@ body {
   background: #fff;
   color: #000;
   line-height: 1.6;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 
 .blog {
@@ -201,7 +205,6 @@ body {
     transform: scale(1);
   }
 }
-
 .comments textarea:focus,
 .login-box input:focus {
   outline: none;

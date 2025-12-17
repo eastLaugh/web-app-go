@@ -1,5 +1,5 @@
 import type { Component } from 'solid-js';
-import { createSignal, createEffect, onMount } from 'solid-js';
+import { createSignal, createEffect } from 'solid-js';
 import { marked } from 'marked';
 import { login, createPost, getPosts } from './api';
 import ChatBox, { collapseChat } from './ChatBox';
@@ -7,23 +7,36 @@ import './App.css';
 
 const Good: Component<{ title: string; url: string; description?: string }> = (props) => (
   <div class="post-item">
-    <a href={props.url} target="_blank" rel="noopener noreferrer" style="color: #000; text-decoration: none; display: block;">
-      <div style="font-weight: 500; margin-bottom: 4px;">{props.title}</div>
-      {props.description && <div style="font-size: 13px; color: #666;">{props.description}</div>}
+    <a href={props.url} target="_blank" rel="noopener noreferrer" class="text-black no-underline block">
+      <div class="font-medium mb-1">{props.title}</div>
+      {props.description && <div class="text-[13px] text-gray-600">{props.description}</div>}
     </a>
   </div>
 );
 
-const goods = [
-  <Good title="示例链接" url="https://example.com" description="这是一个示例链接" />,
-];
+const Post: Component<{ file: string; title: string; time?: string }> = (props) => {
+  const formatTime = (time: string) => {
+    const days = Math.floor((Date.now() - new Date(time).getTime()) / 86400000);
+    if (days === 0) return '今天';
+    if (days === 1) return '昨天';
+    if (days < 7) return `${days}天前`;
+    if (days < 30) return `${Math.floor(days / 7)}周前`;
+    if (days < 365) return `${Math.floor(days / 30)}个月前`;
+    return `${Math.floor(days / 365)}年前`;
+  };
+  return (
+    <div class="post-item" onClick={() => (window.location.hash = props.file)}>
+      <span>{props.title}</span>
+      {props.time && <span class="post-date">{formatTime(props.time)}</span>}
+    </div>
+  );
+};
 
 const App: Component = () => {
   const hash = window.location.hash.slice(1);
   const [currentPage, setCurrentPage] = createSignal(hash.startsWith('goods') ? 'goods' : 'blog');
   const [currentFile, setCurrentFile] = createSignal(hash.startsWith('goods') ? '' : hash);
   const [htmlContent, setHtmlContent] = createSignal('');
-  const [posts, setPosts] = createSignal<{ file: string; title: string; time: string }[]>([]);
   const [token, setToken] = createSignal(localStorage.getItem('token') || '');
   const [email, setEmail] = createSignal('');
   const [showLogin, setShowLogin] = createSignal(false);
@@ -40,11 +53,6 @@ const App: Component = () => {
     if (days < 365) return `${Math.floor(days / 30)}个月前`;
     return `${Math.floor(days / 365)}年前`;
   };
-
-  onMount(async () => {
-    const res = await fetch('/app/posts.json');
-    if (res.ok) setPosts(await res.json());
-  });
 
   createEffect(async () => {
     const file = currentFile();
@@ -92,24 +100,24 @@ const App: Component = () => {
   return (
     <div class="blog">
       <header class="blog-header">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div style="display: flex; gap: 20px;">
-            <h1 onClick={() => { window.location.hash = ''; setCurrentPage('blog'); }} style="cursor: pointer; opacity: currentPage() === 'blog' ? 1 : 0.5;">
+        <div class="flex justify-between items-center">
+          <div class="flex gap-5">
+            <h1 onClick={() => { window.location.hash = ''; setCurrentPage('blog'); }} class={`cursor-pointer ${currentPage() === 'blog' ? 'opacity-100' : 'opacity-50'}`}>
               Blog
             </h1>
-            <h1 onClick={() => { window.location.hash = 'goods'; setCurrentPage('goods'); }} style="cursor: pointer; opacity: currentPage() === 'goods' ? 1 : 0.5;">
+            <h1 onClick={() => { window.location.hash = 'goods'; setCurrentPage('goods'); }} class={`cursor-pointer ${currentPage() === 'goods' ? 'opacity-100' : 'opacity-50'}`}>
               Goods
             </h1>
           </div>
           {token() ? (
-            <span style="font-size: 12px; cursor: pointer;" onClick={(e) => {
+            <span class="text-xs cursor-pointer" onClick={(e) => {
               setToken('');
               localStorage.removeItem('token');
               setClickPos({ x: e.clientX, y: e.clientY });
               setShowLogin(true);
             }}>退出</span>
           ) : (
-            <span style="font-size: 12px; cursor: pointer;" onClick={(e) => {
+            <span class="text-xs cursor-pointer" onClick={(e) => {
               setClickPos({ x: e.clientX, y: e.clientY });
               setShowLogin(true);
             }}>登录</span>
@@ -127,59 +135,57 @@ const App: Component = () => {
       }}>
         {currentPage() === 'goods' ? (
           <div class="post-list">
-            {goods}
+            <Good title="示例链接" url="https://example.com" description="这是一个示例链接" />,
+            <Good title="Go Green Tea GC" url="https://tonybai.com/2025/10/31/deep-into-go-green-tea-gc/" description="垃圾回收器：从 DFS 到 BFS" />,
           </div>
         ) : !currentFile() ? (
           <div class="post-list">
-            {posts().map((p) => (
-              <div class="post-item" onClick={() => (window.location.hash = p.file)}>
-                <span>{p.title}</span>
-                {p.time && <span class="post-date">{formatTime(p.time)}</span>}
-              </div>
-            ))}
+            <Post file="blogs/calculate.md" title="计算器" time="2025-12-16T06:44:06.962Z" />
+            <Post file="blogs/yi-chu-gin.md" title="移除了 Gin，拥抱标准库" time="2025-12-12T20:30:39.589Z" />
+            <Post file="blogs/1213test.md" title="1213test" time="2025-12-12T19:57:27.981Z" />
+            <Post file="blogs/picture_test.md" title="测试图片渲染" time="2025-12-08T16:23:48.082Z" />
+            <Post file="blogs/zhuang-tai-ji.md" title="状态机" time="2025-11-26T07:11:32.852Z" />
+            <Post file="blogs/shan-dang-ce-shi.md" title="删档测试" time="2025-11-25T10:05:30.863Z" />
+            <Post file="blogs/post.md" title="Hello World" time="2025-11-22T09:38:12.950Z" />
           </div>
         ) : (
           <article class="post">
             <div class="post-nav">
-              <a onClick={() => (window.location.hash = '')} style="cursor: pointer;">
+              <a onClick={() => (window.location.hash = '')} class="cursor-pointer">
                 ← 返回
               </a>
-              {(() => {
-                const p = posts().find((x) => x.file === currentFile());
-                return p?.time && <span class="post-date">{formatTime(p.time)}</span>;
-              })()}
             </div>
             <div class="post-body" innerHTML={htmlContent()} />
             <div class="comments">
-              <div style="border-top: 1px solid #000; margin-top: 40px; padding-top: 20px;">
-                <div style="font-size: 14px; margin-bottom: 15px;">回复</div>
+              <div class="border-t border-black mt-10 pt-5">
+                <div class="text-sm mb-4">回复</div>
                 {comments().map((c) => (
-                  <div style="padding: 10px 0; border-bottom: 1px solid #eee; font-size: 13px;">
-                    <div style="color: #999; margin-bottom: 5px;">{c.email || c.author_email}</div>
+                  <div class="py-2.5 border-b border-gray-200 text-[13px]">
+                    <div class="text-gray-500 mb-1.5">{c.email || c.author_email}</div>
                     <div>{c.content}</div>
                   </div>
                 ))}
                 {token() ? (
-                  <div style="margin-top: 20px;">
+                  <div class="mt-5">
                     <textarea
                       value={commentText()}
                       onInput={(e) => setCommentText(e.currentTarget.value)}
                       placeholder="输入回复..."
-                      style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #000; font-size: 13px; font-family: inherit; resize: vertical;"
+                      class="w-full min-h-[60px] p-2 border border-black text-[13px] font-inherit resize-y"
                     />
                     <button
                       onClick={handleComment}
-                      style="margin-top: 10px; padding: 6px 20px; border: 1px solid #000; background: #fff; cursor: pointer; font-size: 13px;"
+                      class="mt-2.5 px-5 py-1.5 border border-black bg-white cursor-pointer text-[13px]"
                     >
                       发送
                     </button>
                   </div>
                 ) : (
-                  <div style="margin-top: 20px; font-size: 12px; color: #999;">
+                  <div class="mt-5 text-xs text-gray-500">
                     <a onClick={(e) => {
                       setClickPos({ x: e.clientX, y: e.clientY });
                       setShowLogin(true);
-                    }} style="cursor: pointer; text-decoration: underline;">登录</a>后回复
+                    }} class="cursor-pointer underline">登录</a>后回复
                   </div>
                 )}
               </div>
@@ -194,28 +200,28 @@ const App: Component = () => {
             style={`transform-origin: ${clickPos().x}px ${clickPos().y}px;`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style="margin-bottom: 20px; font-size: 16px;">登录</div>
+            <div class="mb-5 text-base">登录</div>
             <input
               type="email"
               value={email()}
               onInput={(e) => setEmail(e.currentTarget.value)}
               placeholder="邮箱"
-              style="width: 100%; padding: 8px; border: 1px solid #000; font-size: 13px; margin-bottom: 10px;"
+              class="w-full p-2 border border-black text-[13px] mb-2.5"
               onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
             />
-            <div style="font-size: 11px; color: #999; margin-bottom: 15px;">
+            <div class="text-[11px] text-gray-500 mb-4">
               验证码功能暂未启用，任意邮箱可登录
             </div>
-            <div style="display: flex; gap: 10px;">
+            <div class="flex gap-2.5">
               <button
                 onClick={handleLogin}
-                style="flex: 1; padding: 8px; border: 1px solid #000; background: #000; color: #fff; cursor: pointer; font-size: 13px;"
+                class="flex-1 p-2 border border-black bg-black text-white cursor-pointer text-[13px]"
               >
                 登录
               </button>
               <button
                 onClick={() => setShowLogin(false)}
-                style="flex: 1; padding: 8px; border: 1px solid #000; background: #fff; cursor: pointer; font-size: 13px;"
+                class="flex-1 p-2 border border-black bg-white cursor-pointer text-[13px]"
               >
                 取消
               </button>
@@ -223,8 +229,8 @@ const App: Component = () => {
           </div>
         </div>
       )}
-      <div style="margin-top: 40px; text-align: center; font-size: 12px; padding-bottom: 100px;">
-        <a href="mailto:east_laugh@qq.com" style="color: #000; text-decoration: none;">east_laugh@qq.com</a>
+      <div class="mt-10 text-center text-xs pb-[100px]">
+        <a href="mailto:east_laugh@qq.com" class="text-black no-underline">east_laugh@qq.com</a>
       </div>
       <ChatBox />
     </div>

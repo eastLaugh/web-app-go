@@ -1,10 +1,10 @@
 import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 import devtools from 'solid-devtools/vite';
-import postsPlugin from './vite-plugin-posts';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  plugins: [devtools(), solidPlugin(), postsPlugin()],
+  plugins: [devtools(), solidPlugin(), tailwindcss()],
   base: '/app/',
   server: {
     port: 3000,
