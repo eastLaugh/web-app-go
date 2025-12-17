@@ -135,7 +135,7 @@ const App: Component = () => {
       }}>
         {currentPage() === 'goods' ? (
           <div class="post-list">
-            <Good title="示例链接" url="https://example.com" description="这是一个示例链接" />,
+            <Good title="示例链接" url="https://example.com" description="这是一个示例链接" />
             <Good title="Go Green Tea GC" url="https://tonybai.com/2025/10/31/deep-into-go-green-tea-gc/" description="垃圾回收器：从 DFS 到 BFS" />,
           </div>
         ) : !currentFile() ? (
