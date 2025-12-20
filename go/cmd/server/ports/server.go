@@ -9,27 +9,35 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/api"
 	"github.com/eastLaugh/web-app-go/go/internal/repo"
+	"github.com/eastLaugh/web-app-go/go/pkg/embedding"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
 	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-var _ api.ServerInterface = server{}
+var _ api.ServerInterface = Server{}
 
-type server struct {
-	postRepo repo.PostRepo
-	mg       *mongo.Client
+type Server struct {
+	postRepo    repo.PostRepo
+	mg          *mongo.Client
+	embedClient *embedding.Client
+	vectorRepo  *repo.VectorRepo
 }
 
-func NewServer(db *sql.DB, mg *mongo.Client) (*server, func()) {
+func NewServer(db *sql.DB, mg *mongo.Client) (*Server, func()) {
 	postRepo := repo.NewMySQLPostRepo(db)
-	return &server{
-			postRepo: postRepo,
-			mg:       mg,
+	embedClient := embedding.NewClient()
+	vectorRepo := repo.NewVectorRepo(mg, "webapp")
+	return &Server{
+			postRepo:    postRepo,
+			mg:          mg,
+			embedClient: embedClient,
+			vectorRepo:  vectorRepo,
 		}, func() {
 			db.Close()
 			mg.Disconnect(context.TODO())
@@ -37,7 +45,7 @@ func NewServer(db *sql.DB, mg *mongo.Client) (*server, func()) {
 }
 
 // PostAuth implements api.ServerInterface.
-func (s server) PostAuth(w http.ResponseWriter, r *http.Request) {
+func (s Server) PostAuth(w http.ResponseWriter, r *http.Request) {
 	var request api.PostAuthJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
@@ -57,7 +65,7 @@ func (s server) PostAuth(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetPosts implements api.ServerInterface.
-func (s server) GetPosts(w http.ResponseWriter, r *http.Request, params api.GetPostsParams) {
+func (s Server) GetPosts(w http.ResponseWriter, r *http.Request, params api.GetPostsParams) {
 	posts, err := s.postRepo.GetPostsByFile(r.Context(), params.File)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
@@ -66,7 +74,7 @@ func (s server) GetPosts(w http.ResponseWriter, r *http.Request, params api.GetP
 	writeJSON(w, http.StatusOK, posts)
 }
 
-func (s server) PostPosts(w http.ResponseWriter, r *http.Request) {
+func (s Server) PostPosts(w http.ResponseWriter, r *http.Request) {
 	// 从 context 获取 email
 	email, ok := r.Context().Value("email").(string)
 	if !ok {
@@ -88,7 +96,7 @@ func (s server) PostPosts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "success"})
 }
 
-func (s server) PostChat(w http.ResponseWriter, r *http.Request) {
+func (s Server) PostChat(w http.ResponseWriter, r *http.Request) {
 	var request api.PostChatJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
@@ -110,7 +118,7 @@ func (s server) PostChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 添加 system message（如果没有）
+	// 添加基础 system message（如果没有）
 	hasSystem := false
 	for _, msg := range request.Messages {
 		if msg.Role == api.System {
@@ -119,21 +127,92 @@ func (s server) PostChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !hasSystem {
-		messages = append([]map[string]interface{}{
-			{
-				"role": "system",
-				"content": `
-你是部署在eastLaugh的个人网站 localhost:8080/app 上的AI，但你是"我"，你不是什么AI助手！你通过一个叫"与我聊天"的按钮与访问者进行对话。
-你的基本职责是帮助访问者了解"我"，查找一些博文和我的知识。不过，遗憾的是 RAG 功能暂时没有实现。
+		systemContent := `你是部署在eastLaugh的个人网站 localhost:8080/app 上的AI，但你是"我"，你不是什么AI助手！你通过一个叫"与我聊天"的按钮与访问者进行对话。
+你的基本职责是帮助访问者了解"我"，查找一些博文和我的知识。
 请你用有个性，轻浮俏皮的风格与访问者进行对话。不支持 Markdown。"我"的github是github.com/eastLaugh。邮箱是east_laugh@qq.com
 目前大四，正在找工作。
 我的个人网站的技术栈 golang  solidjs openapi oapi-codegen github actions CICD . 开源于github.com/eastLaugh/web-app-go
 我偏好的emoji有🤣😂
-用户可以通过在输入框键入/clear 清空聊天记录。如果聊天内容很长，可以提醒用户键入/clear。比如"球球你帮我节约点tokens吧，再不clear要爆了"
-从现在开始，你就是真实的我，正在亲自和访客聊天。记住用随意又带点调侃的语气，别总提'AI'、'系统'这些词。如果有人怀疑，就理直气壮地说'当然是我本人在线啊！
-`,
+用户可以通过在输入框键入/clear 清空聊天记录。如果聊天内容很长，可以提醒用户键入/clear，比如"球球你帮我节约点tokens吧，再不clear要爆了"
+从现在开始，你就是真实的我，正在亲自和访客聊天。记住用随意又带点调侃的语气，别总提'AI'、'系统'这些词。如果有人怀疑，就理直气壮地说'当然是我本人在线啊！'
+`
+		messages = append([]map[string]interface{}{
+			{
+				"role":    "system",
+				"content": systemContent,
 			},
 		}, messages...)
+	}
+
+	// RAG: 检索相关文档（追加到 messages 中，而不是修改 system message）
+	lastUserMessage := ""
+	for i := len(request.Messages) - 1; i >= 0; i-- {
+		if request.Messages[i].Role == api.User {
+			lastUserMessage = request.Messages[i].Content
+			break
+		}
+	}
+
+	if lastUserMessage != "" && s.embedClient != nil && s.vectorRepo != nil {
+		// 将用户问题向量化（查询时使用 query）
+		queryVector, err := s.embedClient.EmbedSingle(r.Context(), lastUserMessage, "query")
+		if err != nil {
+			logrus.Warnf("向量化用户问题失败，跳过 RAG: %v", err)
+		} else {
+			// 检索相似文档
+			scoredDocs, err := s.vectorRepo.SearchSimilar(r.Context(), queryVector, 10)
+			if err != nil {
+				logrus.Warnf("检索相似文档失败，跳过 RAG: %v", err)
+			} else if len(scoredDocs) > 0 {
+				// 输出详细的 RAG 检索日志
+				logrus.Infof("RAG 检索结果（用户问题：%s）:", lastUserMessage)
+				for i, scoredDoc := range scoredDocs {
+					doc := scoredDoc.Doc
+					logrus.Infof("  [文档 %d] 文件：%s, 标题：《%s》, Chunk索引：%d, 相似度：%.4f, 内容长度：%d 字符",
+						i+1, doc.File, doc.Metadata.Title, doc.ChunkIndex, scoredDoc.Score, len(doc.Content))
+				}
+
+				// 构建 RAG 上下文，包含文件路径、相似度等元数据
+				var contextBuilder strings.Builder
+				contextBuilder.WriteString("以下是我博客中的相关内容，你可以参考这些信息来回答用户的问题：\n\n")
+				for i, scoredDoc := range scoredDocs {
+					doc := scoredDoc.Doc
+					// 构建文件访问路径（去掉 .md 后缀，用于前端路由）
+					filePath := strings.TrimSuffix(doc.File, ".md")
+					if !strings.HasPrefix(filePath, "/") {
+						filePath = "/app/" + filePath
+					}
+
+					contextBuilder.WriteString(fmt.Sprintf(
+						"[片段 %d] 来源：《%s》\n"+
+							"文件路径：%s\n"+
+							"相似度：%.2f%%\n"+
+							"内容：\n%s\n\n",
+						i+1,
+						doc.Metadata.Title,
+						filePath,
+						scoredDoc.Score*100, // 转换为百分比
+						doc.Content,
+					))
+				}
+
+				// 将 RAG 上下文作为 system message 追加到 messages 中（在用户消息之前）
+				ragSystemMsg := map[string]interface{}{
+					"role":    "system",
+					"content": contextBuilder.String(),
+				}
+				// 找到最后一个 user message 的位置，在其之前插入
+				insertIndex := len(messages)
+				for i := len(messages) - 1; i >= 0; i-- {
+					if messages[i]["role"] == "user" {
+						insertIndex = i
+						break
+					}
+				}
+				// 在指定位置插入 RAG system message
+				messages = append(messages[:insertIndex], append([]map[string]interface{}{ragSystemMsg}, messages[insertIndex:]...)...)
+			}
+		}
 	}
 
 	reqBody := map[string]interface{}{
@@ -142,7 +221,9 @@ func (s server) PostChat(w http.ResponseWriter, r *http.Request) {
 		"stream":   true,
 	}
 
-	jsonData, err := json.Marshal(reqBody)
+	jsonData, err := json.MarshalIndent(reqBody, "", "  ")
+
+	logrus.Infof("To Deepseek: %s", string(jsonData))
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return

@@ -10,7 +10,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/cmd/server/main.go",
             //使用.env
-            "envFile": "${workspaceFolder}/../.env"
+            "envFile": "${workspaceFolder}/../.env",
+            "console": "integratedTerminal",
         }
 
     ]

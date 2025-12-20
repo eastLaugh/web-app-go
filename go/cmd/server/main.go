@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"flag"
+	"encoding/json"
+	"fmt"
+	"html/template"
 	"io/fs"
 	"log"
 	"net/http"
@@ -39,25 +41,45 @@ func init() {
 
 func main() {
 
-	local := flag.Bool("local", false, "使用本地文件系统而不是嵌入的文件系统")
-	flag.Parse()
-
 	var fsys fs.FS
-	if *local {
-		fsys = os.DirFS("dist")
-	} else {
-		fsys, _ = fs.Sub(dist, "dist")
-	}
-	logrus.Debugf("使用文件系统: %T", fsys)
+	fsys, _ = fs.Sub(dist, "dist")
 
 	go Serve(fsys)
+	go ServeConsole(fsys)
 
 	select {}
+}
+
+//go:embed template/*
+var consoleTemplate embed.FS
+var consoleTmpl = template.Must(template.ParseFS(consoleTemplate, "template/*"))
+
+var serverChan chan *ports.Server = make(chan *ports.Server)
+
+func ServeConsole(fsys fs.FS) {
+	mux := http.NewServeMux()
+	server := <-serverChan
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		consoleTmpl.Execute(w, nil)
+	})
+	mux.HandleFunc("GET /rebuild-index", func(w http.ResponseWriter, r *http.Request) {
+		err := server.BuildRAGIndex(r.Context(), fsys)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "索引构建成功"})
+	})
+
+	panic(http.ListenAndServe("localhost:8081", mux))
 }
 
 func Serve(fsys fs.FS) {
 	server, cancel := ports.NewServer(initDB(), initMongo())
 	defer cancel()
+
+	serverChan <- server
 
 	// 创建主路由
 	mux := http.NewServeMux()
@@ -70,6 +92,20 @@ func Serve(fsys fs.FS) {
 	// 测试 panic 路由
 	mux.HandleFunc("GET /panic", func(w http.ResponseWriter, r *http.Request) {
 		panic("panic test")
+	})
+
+	// RAG 索引构建接口
+	mux.HandleFunc("POST /api/v1/rag/rebuild-index", func(w http.ResponseWriter, r *http.Request) {
+		// 简单认证：检查是否有 token（可以从 header 或 query 参数获取）
+		// 这里简化处理，实际可以加更严格的认证
+		if err := server.BuildRAGIndex(r.Context(), fsys); err != nil {
+			logrus.Errorf("构建 RAG 索引失败: %v", err)
+			http.Error(w, fmt.Sprintf("构建索引失败: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "索引构建成功"})
 	})
 
 	// 文件服务器
@@ -120,11 +156,6 @@ func initMongo() *mongo.Client {
 	if err != nil {
 		panic(err)
 	}
-	defer func() {
-		if err = client.Disconnect(context.TODO()); err != nil {
-			panic(err)
-		}
-	}()
 	// Sends a ping to confirm a successful connection
 	var result bson.M
 	if err := client.Database("admin").RunCommand(context.TODO(), bson.D{{Key: "ping", Value: 1}}).Decode(&result); err != nil {

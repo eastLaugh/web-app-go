@@ -140,6 +140,7 @@ const App: Component = () => {
           </div>
         ) : !currentFile() ? (
           <div class="post-list">
+            <Post file="blogs/rag-shi-xian.md" title="为个人网站添加 RAG 功能" time={new Date().toISOString()} />
             <Post file="blogs/calculate.md" title="计算器" time="2025-12-16T06:44:06.962Z" />
             <Post file="blogs/yi-chu-gin.md" title="移除了 Gin，拥抱标准库" time="2025-12-12T20:30:39.589Z" />
             <Post file="blogs/1213test.md" title="1213test" time="2025-12-12T19:57:27.981Z" />
