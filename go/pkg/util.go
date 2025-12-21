@@ -1,10 +1,18 @@
 package util
 
 import (
+	"log/slog"
 	"os/exec"
 	"runtime"
 	"strings"
 )
+
+var LevelColor = map[slog.Level]string{
+	slog.LevelDebug: "\033[36m", // 青色
+	slog.LevelInfo:  "\033[32m", // 绿色
+	slog.LevelWarn:  "\033[33m", // 黄色
+	slog.LevelError: "\033[31m", // 红色
+}
 
 // openURL opens the specified URL in the default browser of the user.
 func OpenURL(url string) error {
@@ -42,4 +50,3 @@ func isWSL() bool {
 	}
 	return strings.Contains(strings.ToLower(string(releaseData)), "microsoft")
 }
-

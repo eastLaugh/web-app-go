@@ -3,11 +3,11 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"log"
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/api"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	"github.com/sirupsen/logrus"
 )
 
 // MySQLPostRepo MySQL 实现的评论仓库
@@ -39,7 +39,7 @@ func (r *MySQLPostRepo) GetPostsByFile(ctx context.Context, file string) ([]api.
 		var createdAt time.Time
 		var email string
 		if err := rows.Scan(&id, &file, &content, &email, &createdAt); err != nil {
-			logrus.Errorf("扫描评论数据失败: %v", err)
+			log.Printf("扫描评论数据失败: %v", err)
 			continue
 		}
 		p.Id = &id
@@ -58,7 +58,7 @@ func (r *MySQLPostRepo) GetPostsByFile(ctx context.Context, file string) ([]api.
 func (r *MySQLPostRepo) InsertPost(ctx context.Context, email string, content string, file string) error {
 	_, err := r.db.ExecContext(ctx, "INSERT INTO posts (email, content, file) VALUES (?, ?, ?)", email, content, file)
 	if err != nil {
-		logrus.Errorf("插入评论失败: %v", err)
+		log.Printf("插入评论失败: %v", err)
 		return err
 	}
 	return nil

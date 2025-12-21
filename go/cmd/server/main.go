@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"embed"
 	"encoding/json"
-	"fmt"
 	"html/template"
 	"io/fs"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -17,7 +17,7 @@ import (
 	"github.com/eastLaugh/web-app-go/go/cmd/server/ports"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
 	"github.com/joho/godotenv"
-	"github.com/sirupsen/logrus"
+	"github.com/lmittmann/tint"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -30,13 +30,7 @@ var dist embed.FS
 
 func init() {
 	_ = godotenv.Load()
-
-	logrus.SetLevel(logrus.DebugLevel)
-	logrus.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp:   false,
-		TimestampFormat: time.DateTime,
-		ForceColors:     true,
-	})
+	slog.SetDefault(slog.New(tint.NewHandler(os.Stdout, nil)))
 }
 
 func main() {
@@ -45,7 +39,7 @@ func main() {
 	fsys, _ = fs.Sub(dist, "dist")
 
 	go Serve(fsys)
-	go ServeConsole(fsys)
+	// go ServeConsole(fsys)
 
 	select {}
 }
@@ -54,7 +48,7 @@ func main() {
 var consoleTemplate embed.FS
 var consoleTmpl = template.Must(template.ParseFS(consoleTemplate, "template/*"))
 
-var serverChan chan *ports.Server = make(chan *ports.Server)
+var serverChan chan *ports.Server = make(chan *ports.Server, 1)
 
 func ServeConsole(fsys fs.FS) {
 	mux := http.NewServeMux()
@@ -63,8 +57,7 @@ func ServeConsole(fsys fs.FS) {
 		consoleTmpl.Execute(w, nil)
 	})
 	mux.HandleFunc("GET /rebuild-index", func(w http.ResponseWriter, r *http.Request) {
-		err := server.BuildRAGIndex(r.Context(), fsys)
-		if err != nil {
+		if err := server.BuildRAGIndex(r.Context(), fsys); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -72,7 +65,7 @@ func ServeConsole(fsys fs.FS) {
 		json.NewEncoder(w).Encode(map[string]string{"message": "索引构建成功"})
 	})
 
-	panic(http.ListenAndServe("localhost:8081", mux))
+	panic(http.ListenAndServe("localhost:2333", mux))
 }
 
 func Serve(fsys fs.FS) {
@@ -81,60 +74,40 @@ func Serve(fsys fs.FS) {
 
 	serverChan <- server
 
-	// 创建主路由
 	mux := http.NewServeMux()
 
-	// API 路由，使用标准库风格的 handler
 	mux.Handle("/api/v1/", http.StripPrefix("/api/v1", api.HandlerWithOptions(server, api.StdHTTPServerOptions{
 		Middlewares: []api.MiddlewareFunc{tokens.Middleware},
 	})))
 
-	// 测试 panic 路由
 	mux.HandleFunc("GET /panic", func(w http.ResponseWriter, r *http.Request) {
 		panic("panic test")
-	})
-
-	// RAG 索引构建接口
-	mux.HandleFunc("POST /api/v1/rag/rebuild-index", func(w http.ResponseWriter, r *http.Request) {
-		// 简单认证：检查是否有 token（可以从 header 或 query 参数获取）
-		// 这里简化处理，实际可以加更严格的认证
-		if err := server.BuildRAGIndex(r.Context(), fsys); err != nil {
-			logrus.Errorf("构建 RAG 索引失败: %v", err)
-			http.Error(w, fmt.Sprintf("构建索引失败: %v", err), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"message": "索引构建成功"})
 	})
 
 	// 文件服务器
 	mux.Handle("/app/", http.StripPrefix("/app/", http.FileServer(http.FS(fsys))))
 	mux.Handle("/", http.RedirectHandler("/app/", http.StatusTemporaryRedirect))
 
-	// 添加日志和恢复中间件
 	handler := loggingMiddleware(recoveryMiddleware(mux))
 
-	port := os.Getenv("EASTLAUGH_PORT")
-	logrus.Infof("监听于 %s", port)
-	panic(http.ListenAndServe(port, handler))
+	addr := os.Getenv("EASTLAUGH_ADDR")
+	log.Printf("监听于 %s ...", addr)
+	panic(http.ListenAndServe(addr, handler))
 }
 
-// loggingMiddleware 添加请求日志
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
-		logrus.Infof("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+		slog.Info("请求", "method", r.Method, "path", r.URL.Path, "duration", time.Since(start))
 	})
 }
 
-// recoveryMiddleware 恢复 panic
 func recoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				logrus.Errorf("Panic recovered: %v", err)
+				log.Printf("Panic recovered: %v", err)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			}
 		}()
@@ -161,30 +134,34 @@ func initMongo() *mongo.Client {
 	if err := client.Database("admin").RunCommand(context.TODO(), bson.D{{Key: "ping", Value: 1}}).Decode(&result); err != nil {
 		panic(err)
 	}
-	logrus.Info("MongoDB 连接成功")
+	log.Printf("MongoDB 连接成功")
 	return client
 }
 
 func initDB() *sql.DB {
 	dsn, ok := os.LookupEnv("EASTLAUGH_DATABASE_DSN")
 	if !ok {
-		logrus.Fatal("未设置 EASTLAUGH_DATABASE_DSN 环境变量")
+		log.Printf("未设置 EASTLAUGH_DATABASE_DSN 环境变量")
+		os.Exit(1)
 	}
 
 	driver, ok := os.LookupEnv("EASTLAUGH_DATABASE_DRIVER")
 	if !ok {
-		logrus.Fatal("未设置 EASTLAUGH_DATABASE_DRIVER 环境变量")
+		log.Printf("未设置 EASTLAUGH_DATABASE_DRIVER 环境变量")
+		os.Exit(1)
 	}
 
 	db, err := sql.Open(driver, dsn)
 	if err != nil {
-		logrus.Fatalf("数据库连接失败: %v", err)
+		log.Printf("数据库连接失败: %v", err)
+		os.Exit(1)
 	}
 
 	if err := db.Ping(); err != nil {
-		logrus.Fatalf("数据库 ping 失败: %v", err)
+		log.Printf("数据库 ping 失败: %v", err)
+		os.Exit(1)
 	}
 
-	logrus.Info("数据库连接成功")
+	log.Printf("数据库连接成功")
 	return db
 }

@@ -6,10 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
-
-	"github.com/sirupsen/logrus"
 )
 
 // Client embedding 客户端
@@ -24,13 +23,13 @@ type Client struct {
 func NewClient() *Client {
 	apiKey := os.Getenv("ALIBABA_EMBEDDING_API_KEY")
 	if apiKey == "" {
-		logrus.Warn("ALIBABA_EMBEDDING_API_KEY 未设置，embedding 功能将不可用")
+		log.Printf("警告: ALIBABA_EMBEDDING_API_KEY 未设置，embedding 功能将不可用")
 	}
 
 	dimension := 1024 // 默认 1024 维
 	if dimStr := os.Getenv("ALIBABA_EMBEDDING_DIMENSION"); dimStr != "" {
 		if _, err := fmt.Sscanf(dimStr, "%d", &dimension); err != nil {
-			logrus.Warnf("ALIBABA_EMBEDDING_DIMENSION 格式错误，使用默认值 1024: %v", err)
+			log.Printf("警告: ALIBABA_EMBEDDING_DIMENSION 格式错误，使用默认值 1024: %v", err)
 			dimension = 1024
 		}
 	}
@@ -124,13 +123,13 @@ func (c *Client) Embed(ctx context.Context, texts []string, textType string) ([]
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		logrus.Debugf("API 请求体: %s", string(jsonData))
+		log.Printf("API 请求体: %s", string(jsonData))
 		return nil, fmt.Errorf("API 返回错误: %d, %s", resp.StatusCode, string(body))
 	}
 
 	var embedResp EmbedResponse
 	if err := json.Unmarshal(body, &embedResp); err != nil {
-		logrus.Debugf("API 响应体: %s", string(body))
+		log.Printf("API 响应体: %s", string(body))
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
 
