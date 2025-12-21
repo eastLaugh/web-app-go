@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -16,7 +18,6 @@ import (
 	"github.com/eastLaugh/web-app-go/go/internal/repo"
 	"github.com/eastLaugh/web-app-go/go/pkg/embedding"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
-	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -92,7 +93,7 @@ func (s Server) PostPosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logrus.Infof("[ %s := %s ] %s\n", email, req.File, req.Content)
+	slog.Info("新评论", "email", email, "file", req.File, "content", req.Content)
 	writeJSON(w, http.StatusOK, map[string]string{"message": "success"})
 }
 
@@ -157,19 +158,24 @@ func (s Server) PostChat(w http.ResponseWriter, r *http.Request) {
 		// 将用户问题向量化（查询时使用 query）
 		queryVector, err := s.embedClient.EmbedSingle(r.Context(), lastUserMessage, "query")
 		if err != nil {
-			logrus.Warnf("向量化用户问题失败，跳过 RAG: %v", err)
+			log.Printf("警告: 向量化用户问题失败，跳过 RAG: %v", err)
 		} else {
 			// 检索相似文档
 			scoredDocs, err := s.vectorRepo.SearchSimilar(r.Context(), queryVector, 10)
 			if err != nil {
-				logrus.Warnf("检索相似文档失败，跳过 RAG: %v", err)
+				log.Printf("警告: 检索相似文档失败，跳过 RAG: %v", err)
 			} else if len(scoredDocs) > 0 {
 				// 输出详细的 RAG 检索日志
-				logrus.Infof("RAG 检索结果（用户问题：%s）:", lastUserMessage)
+				slog.Info("RAG 检索结果", "question", lastUserMessage, "count", len(scoredDocs))
 				for i, scoredDoc := range scoredDocs {
 					doc := scoredDoc.Doc
-					logrus.Infof("  [文档 %d] 文件：%s, 标题：《%s》, Chunk索引：%d, 相似度：%.4f, 内容长度：%d 字符",
-						i+1, doc.File, doc.Metadata.Title, doc.ChunkIndex, scoredDoc.Score, len(doc.Content))
+					slog.Info("RAG 文档",
+						"index", i+1,
+						"file", doc.File,
+						"title", doc.Metadata.Title,
+						"chunkIndex", doc.ChunkIndex,
+						"score", scoredDoc.Score,
+						"contentLength", len(doc.Content))
 				}
 
 				// 构建 RAG 上下文，包含文件路径、相似度等元数据
@@ -223,7 +229,7 @@ func (s Server) PostChat(w http.ResponseWriter, r *http.Request) {
 
 	jsonData, err := json.MarshalIndent(reqBody, "", "  ")
 
-	logrus.Infof("To Deepseek: %s", string(jsonData))
+	log.Printf("To Deepseek: %s", string(jsonData))
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -272,7 +278,7 @@ func (s Server) PostChat(w http.ResponseWriter, r *http.Request) {
 		n, err := resp.Body.Read(buffer)
 		if n > 0 {
 			if _, writeErr := w.Write(buffer[:n]); writeErr != nil {
-				logrus.Errorf("写入响应失败: %v", writeErr)
+				log.Printf("写入响应失败: %v", writeErr)
 				return
 			}
 			flusher.Flush()
@@ -281,7 +287,7 @@ func (s Server) PostChat(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil {
-			logrus.Errorf("读取流式响应失败: %v", err)
+			log.Printf("读取流式响应失败: %v", err)
 			return
 		}
 	}

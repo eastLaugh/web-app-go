@@ -2,9 +2,9 @@ package repo
 
 import (
 	"context"
+	"log"
 	"math"
 
-	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -38,7 +38,7 @@ func NewVectorRepo(mg *mongo.Client, dbName string) *VectorRepo {
 func (r *VectorRepo) InsertVector(ctx context.Context, doc *VectorDoc) error {
 	_, err := r.collection.InsertOne(ctx, doc)
 	if err != nil {
-		logrus.Errorf("插入向量文档失败: %v", err)
+		log.Printf("插入向量文档失败: %v", err)
 		return err
 	}
 	return nil
@@ -58,7 +58,7 @@ func (r *VectorRepo) InsertVectors(ctx context.Context, docs []*VectorDoc) error
 
 	_, err := r.collection.InsertMany(ctx, docsInterface)
 	if err != nil {
-		logrus.Errorf("批量插入向量文档失败: %v", err)
+		log.Printf("批量插入向量文档失败: %v", err)
 		return err
 	}
 	return nil
@@ -126,7 +126,7 @@ func (r *VectorRepo) SearchSimilar(ctx context.Context, queryVector []float32, t
 func (r *VectorRepo) DeleteByFile(ctx context.Context, file string) error {
 	_, err := r.collection.DeleteMany(ctx, bson.M{"file": file})
 	if err != nil {
-		logrus.Errorf("删除向量文档失败: %v", err)
+		log.Printf("删除向量文档失败: %v", err)
 		return err
 	}
 	return nil
@@ -136,7 +136,7 @@ func (r *VectorRepo) DeleteByFile(ctx context.Context, file string) error {
 func (r *VectorRepo) ClearAll(ctx context.Context) error {
 	_, err := r.collection.DeleteMany(ctx, bson.M{})
 	if err != nil {
-		logrus.Errorf("清空向量文档失败: %v", err)
+		log.Printf("清空向量文档失败: %v", err)
 		return err
 	}
 	return nil

@@ -7,7 +7,7 @@ services:
         condition: service_healthy
     ports:
       - "80:80"
-      - "8081:8081" # console
+      - "2333:2333" # console
     volumes:
       - /etc/localtime:/etc/localtime:ro
       # - /etc/timezone:/etc/timezone:ro
@@ -16,10 +16,9 @@ services:
       EASTLAUGH_TOKEN_PWD: ${EASTLAUGH_TOKEN_PWD}
       EASTLAUGH_DATABASE_DRIVER: ${EASTLAUGH_DATABASE_DRIVER}
       EASTLAUGH_DATABASE_DSN: root:@tcp(mysql:3306)/webapp?charset=utf8mb4&parseTime=True&loc=Local
-      # EASTLAUGH_DATABASE_DSN: ${EASTLAUGH_DATABASE_DSN}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       EASTLAUGH_MONGODB_URI: mongodb://mongo:27017/webapp
-      EASTLAUGH_PORT: :80
+      EASTLAUGH_ADDR: :80
 
 
   mysql:
