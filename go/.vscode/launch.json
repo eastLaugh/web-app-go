@@ -8,7 +8,7 @@
             "name": "调试服务器",
             "type": "go",
             "request": "launch",
-            "program": "${workspaceFolder}/cmd/server/main.go",
+            "program": "${workspaceFolder}/main.go",
             //使用.env
             "envFile": "${workspaceFolder}/../.env",
             "console": "integratedTerminal",

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/eastLaugh/web-app-go/go/api"
+	"github.com/eastLaugh/web-app-go/go/internal/api"
 )
 
 var tokenPwd = os.Getenv("EASTLAUGH_TOKEN_PWD")

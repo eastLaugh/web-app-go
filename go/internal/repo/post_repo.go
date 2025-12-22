@@ -3,7 +3,7 @@ package repo
 import (
 	"context"
 
-	"github.com/eastLaugh/web-app-go/go/api"
+	"github.com/eastLaugh/web-app-go/go/internal/api"
 )
 
 // PostRepo 定义评论数据访问接口

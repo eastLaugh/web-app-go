@@ -7,7 +7,7 @@
 新API流程：
 修改api/文件下的yaml文件，确保yaml文件符合openAPI规范
 
-使用oapi-codegen工具生成代码，见 go/api/gen.go 文件
+使用oapi-codegen工具生成代码，见 go/internal/api/gen.go 文件
 
 根据情况少量生成 .http 文件
 

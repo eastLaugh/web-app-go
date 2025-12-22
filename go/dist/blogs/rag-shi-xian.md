@@ -55,7 +55,7 @@
    - 读取 Markdown 文件
    - 按段落切分（chunking）
 
-4. **RAG 集成** (`server/ports/server.go`)
+4. **RAG 集成** (`cmd/server/ports/server.go`)
    - 用户提问时检索相关文档
    - 将检索结果注入到 LLM 上下文
 
@@ -179,7 +179,7 @@ func cosineSimilarity(a, b []float32) float64 {
 将检索结果作为 system message 追加到对话中：
 
 ```go
-// server/ports/server.go
+// cmd/server/ports/server.go
 if len(scoredDocs) > 0 {
     // 构建 RAG 上下文
     var contextBuilder strings.Builder
@@ -284,7 +284,6 @@ curl -X POST http://localhost:8080/api/v1/rag/rebuild-index
 **相关链接**：
 - 项目地址：https://github.com/eastLaugh/web-app-go
 - 阿里云百炼：https://bailian.console.aliyun.com/
-
 
 
 

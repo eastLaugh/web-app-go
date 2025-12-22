@@ -11,8 +11,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/eastLaugh/web-app-go/go/api"
-	"github.com/eastLaugh/web-app-go/go/cmd/server/ports"
+	"github.com/eastLaugh/web-app-go/go/internal/api"
+	"github.com/eastLaugh/web-app-go/go/ports"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
 	"github.com/joho/godotenv"
 	"github.com/lmittmann/tint"

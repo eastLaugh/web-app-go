@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/eastLaugh/web-app-go/go/api"
+	"github.com/eastLaugh/web-app-go/go/internal/api"
 	"github.com/eastLaugh/web-app-go/go/internal/repo"
 	"github.com/eastLaugh/web-app-go/go/pkg/embedding"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"

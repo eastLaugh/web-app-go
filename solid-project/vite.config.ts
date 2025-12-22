@@ -11,7 +11,7 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    outDir: '../go/cmd/server/dist',
+    outDir: '../go/dist',
     emptyOutDir: true,
   },
 });

@@ -5,7 +5,7 @@ import (
 
 	"time"
 
-	"github.com/eastLaugh/web-app-go/go/api"
+	"github.com/eastLaugh/web-app-go/go/internal/api"
 	"github.com/oapi-codegen/runtime/types"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
