@@ -3,7 +3,6 @@ package ports
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,8 +29,8 @@ type Server struct {
 	vectorRepo  *repo.VectorRepo
 }
 
-func NewServer(db *sql.DB, mg *mongo.Client) (*Server, func()) {
-	postRepo := repo.NewMySQLPostRepo(db)
+func NewServer(mg *mongo.Client) (*Server, func()) {
+	postRepo := repo.NewMangoPostRepo(mg.Database("webapp").Collection("posts"))
 	embedClient := embedding.NewClient()
 	vectorRepo := repo.NewVectorRepo(mg, "webapp")
 	return &Server{
@@ -40,7 +39,6 @@ func NewServer(db *sql.DB, mg *mongo.Client) (*Server, func()) {
 			embedClient: embedClient,
 			vectorRepo:  vectorRepo,
 		}, func() {
-			db.Close()
 			mg.Disconnect(context.TODO())
 		}
 }

@@ -1,11 +1,16 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Console</title>
 </head>
+
 <body>
     <button onclick="rebuildIndex()">rebuildIndex</button>
     <div id="result"></div>
+
+    <h1>Net Interfaces</h1>
+    <pre id="netInterfaces"></pre>
     <script>
         function rebuildIndex() {
             fetch('/rebuild-index', { method: 'GET' })
@@ -14,6 +19,13 @@
                 .catch(err => document.getElementById('result').textContent = 'Error: ' + err);
         }
     </script>
-</body>
-</html>
 
+    <script>
+        fetch('/net-interfaces', { method: 'GET' })
+            .then(r => r.text())
+            .then(data => document.getElementById('netInterfaces').textContent = data)
+            .catch(err => document.getElementById('netInterfaces').textContent = 'Error: ' + err);
+    </script>
+</body>
+
+</html>

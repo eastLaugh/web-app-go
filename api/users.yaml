@@ -92,8 +92,8 @@ paths:
           required: true
           schema:
             type: string
-          description: 博客文件名，如 post.md
-          example: "post.md"
+          description: 博客文件名，如 blogs/post.md
+          example: "blogs/post.md"
       responses:
         '200':
           description: 评论列表
@@ -144,7 +144,7 @@ components:
         file:
           type: string
           description: 博客文件名
-          example: "hello-world.md"
+          example: "blogs/hello-world.md"
         content:
           type: string
           description: 评论内容
@@ -176,12 +176,12 @@ components:
       type: object
       properties:
         id:
-          type: integer
+          type: string
           example: 1
         file:
           type: string
           description: 博客文件名
-          example: "post.md"
+          example: "blogs/post.md"
         content:
           type: string
           description: 评论内容

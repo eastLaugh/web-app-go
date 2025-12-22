@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"embed"
-	"encoding/json"
 	"html/template"
 	"io/fs"
 	"log"
@@ -21,8 +19,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
-
-	_ "github.com/go-sql-driver/mysql"
 )
 
 //go:embed dist/*
@@ -39,7 +35,7 @@ func main() {
 	fsys, _ = fs.Sub(dist, "dist")
 
 	go Serve(fsys)
-	// go ServeConsole(fsys)
+	go ServeConsole(fsys)
 
 	select {}
 }
@@ -50,26 +46,8 @@ var consoleTmpl = template.Must(template.ParseFS(consoleTemplate, "template/*"))
 
 var serverChan chan *ports.Server = make(chan *ports.Server, 1)
 
-func ServeConsole(fsys fs.FS) {
-	mux := http.NewServeMux()
-	server := <-serverChan
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		consoleTmpl.Execute(w, nil)
-	})
-	mux.HandleFunc("GET /rebuild-index", func(w http.ResponseWriter, r *http.Request) {
-		if err := server.BuildRAGIndex(r.Context(), fsys); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"message": "索引构建成功"})
-	})
-
-	panic(http.ListenAndServe("localhost:2333", mux))
-}
-
 func Serve(fsys fs.FS) {
-	server, cancel := ports.NewServer(initDB(), initMongo())
+	server, cancel := ports.NewServer(initMongo())
 	defer cancel()
 
 	serverChan <- server
@@ -136,32 +114,4 @@ func initMongo() *mongo.Client {
 	}
 	log.Printf("MongoDB 连接成功")
 	return client
-}
-
-func initDB() *sql.DB {
-	dsn, ok := os.LookupEnv("EASTLAUGH_DATABASE_DSN")
-	if !ok {
-		log.Printf("未设置 EASTLAUGH_DATABASE_DSN 环境变量")
-		os.Exit(1)
-	}
-
-	driver, ok := os.LookupEnv("EASTLAUGH_DATABASE_DRIVER")
-	if !ok {
-		log.Printf("未设置 EASTLAUGH_DATABASE_DRIVER 环境变量")
-		os.Exit(1)
-	}
-
-	db, err := sql.Open(driver, dsn)
-	if err != nil {
-		log.Printf("数据库连接失败: %v", err)
-		os.Exit(1)
-	}
-
-	if err := db.Ping(); err != nil {
-		log.Printf("数据库 ping 失败: %v", err)
-		os.Exit(1)
-	}
-
-	log.Printf("数据库连接成功")
-	return db
 }

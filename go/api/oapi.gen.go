@@ -81,12 +81,12 @@ type Post struct {
 
 	// File 博客文件名
 	File *string `json:"file,omitempty"`
-	Id   *int    `json:"id,omitempty"`
+	Id   *string `json:"id,omitempty"`
 }
 
 // GetPostsParams defines parameters for GetPosts.
 type GetPostsParams struct {
-	// File 博客文件名，如 post.md
+	// File 博客文件名，如 blogs/post.md
 	File string `form:"file" json:"file"`
 }
 
