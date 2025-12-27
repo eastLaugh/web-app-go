@@ -8,11 +8,20 @@
             "name": "调试服务器",
             "type": "go",
             "request": "launch",
-            "program": "${workspaceFolder}/main.go",
+            "program": "${workspaceFolder}/",
+            //使用.env
+            "envFile": "${workspaceFolder}/../.env",
+            "console": "integratedTerminal",
+        },
+        {
+            "name": "测试cnllm",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/pkg/cnllm",
             //使用.env
             "envFile": "${workspaceFolder}/../.env",
             "console": "integratedTerminal",
         }
-
     ]
 }

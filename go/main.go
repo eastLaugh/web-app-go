@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
-	"github.com/eastLaugh/web-app-go/go/ports"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
+	"github.com/eastLaugh/web-app-go/go/ports"
 	"github.com/joho/godotenv"
 	"github.com/lmittmann/tint"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -47,9 +47,7 @@ var consoleTmpl = template.Must(template.ParseFS(consoleTemplate, "template/*"))
 var serverChan chan *ports.Server = make(chan *ports.Server, 1)
 
 func Serve(fsys fs.FS) {
-	server, cancel := ports.NewServer(initMongo())
-	defer cancel()
-
+	server := ports.NewServer(initMongo())
 	serverChan <- server
 
 	mux := http.NewServeMux()

@@ -133,29 +133,7 @@ const ChatBox: Component = () => {
       let buffer = '';
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          // 处理剩余的 buffer
-          if (buffer.trim()) {
-            const lines = buffer.split('\n');
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6).trim();
-                if (data && data !== '[DONE]') {
-                  try {
-                    const json = JSON.parse(data);
-                    const content = json.choices?.[0]?.delta?.content || '';
-                    if (content) {
-                      setCurrentContent(prev => prev + content);
-                    }
-                  } catch (e) {
-                    // 忽略解析错误
-                  }
-                }
-              }
-            }
-          }
-          break;
-        }
+        if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -163,34 +141,17 @@ const ChatBox: Component = () => {
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') {
-              // 完成，保存消息
-              const finalContent = currentContent();
-              if (finalContent) {
-                setMessages(prev => [...prev, { role: 'assistant', content: finalContent }]);
-                setCurrentContent('');
-              }
-              setIsLoading(false);
-              return;
+            const text = line.slice(6);
+            if (text.startsWith('[ERROR]')) {
+              throw new Error(text.slice(7));
             }
-
-            if (data) {
-              try {
-                const json = JSON.parse(data);
-                const content = json.choices?.[0]?.delta?.content || '';
-                if (content) {
-                  setCurrentContent(prev => prev + content);
-                }
-              } catch (e) {
-                // 忽略解析错误
-              }
+            if (text) {
+              setCurrentContent(prev => prev + text);
             }
           }
         }
       }
 
-      // 流结束，保存最终消息
       const finalContent = currentContent();
       if (finalContent) {
         setMessages(prev => [...prev, { role: 'assistant', content: finalContent }]);

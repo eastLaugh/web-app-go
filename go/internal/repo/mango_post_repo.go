@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
+	util "github.com/eastLaugh/web-app-go/go/pkg"
 	"github.com/oapi-codegen/runtime/types"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -43,10 +44,10 @@ func (coll *MangoPostRepo) GetPostsByFile(ctx context.Context, file string) ([]a
 			return nil, err
 		}
 		posts = append(posts, api.Post{
-			Id:        new(post.Id.Hex()),
+			Id:        util.New(post.Id.Hex()),
 			File:      &post.File,
 			Content:   &post.Content,
-			Email:     new(types.Email(post.Email)),
+			Email:     util.New(types.Email(post.Email)),
 			CreatedAt: &post.CreatedAt,
 		})
 	}
@@ -64,9 +65,4 @@ func (coll *MangoPostRepo) InsertPost(ctx context.Context, email string, content
 		return err
 	}
 	return nil
-}
-
-// go 1.26 will add
-func new[T any](v T) *T {
-	return &v
 }
