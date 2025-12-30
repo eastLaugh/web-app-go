@@ -21,7 +21,6 @@ export const createPost = async (token: string, file: string, content: string) =
     body: JSON.stringify({ file, content }),
   });
   if (!res.ok) throw new Error('发送失败');
-  return await res.json();
 };
 
 export const getPosts = async (file: string) => {

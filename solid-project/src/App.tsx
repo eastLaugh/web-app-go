@@ -3,6 +3,7 @@ import { createSignal, createEffect } from 'solid-js';
 import { marked } from 'marked';
 import { login, createPost, getPosts } from './api';
 import ChatBox, { collapseChat } from './ChatBox';
+import { AnkiStub } from './anki/Anki';
 import './App.css';
 
 const Good: Component<{ title: string; url: string; description?: string }> = (props) => (
@@ -34,8 +35,8 @@ const Post: Component<{ file: string; title: string; time?: string }> = (props) 
 
 const App: Component = () => {
   const hash = window.location.hash.slice(1);
-  const [currentPage, setCurrentPage] = createSignal(hash.startsWith('goods') ? 'goods' : 'blog');
-  const [currentFile, setCurrentFile] = createSignal(hash.startsWith('goods') ? '' : hash);
+  const [currentPage, setCurrentPage] = createSignal(hash === 'anki' ? 'anki' : hash.startsWith('goods') ? 'goods' : 'blog');
+  const [currentFile, setCurrentFile] = createSignal(hash === 'anki' || hash.startsWith('goods') ? '' : hash);
   const [htmlContent, setHtmlContent] = createSignal('');
   const [token, setToken] = createSignal(localStorage.getItem('token') || '');
   const [email, setEmail] = createSignal('');
@@ -93,8 +94,8 @@ const App: Component = () => {
 
   window.addEventListener('hashchange', () => {
     const hash = window.location.hash.slice(1);
-    setCurrentPage(hash.startsWith('goods') ? 'goods' : 'blog');
-    setCurrentFile(hash.startsWith('goods') ? '' : hash);
+    setCurrentPage(hash === 'anki' ? 'anki' : hash.startsWith('goods') ? 'goods' : 'blog');
+    setCurrentFile(hash === 'anki' || hash.startsWith('goods') ? '' : hash);
   });
 
   return (
@@ -107,6 +108,16 @@ const App: Component = () => {
             </h1>
             <h1 onClick={() => { window.location.hash = 'goods'; setCurrentPage('goods'); }} class={`cursor-pointer ${currentPage() === 'goods' ? 'opacity-100' : 'opacity-50'}`}>
               Goods
+            </h1>
+            <h1
+              onClick={() => {
+                window.location.hash = 'anki';
+                setCurrentPage('anki');
+                setCurrentFile('');
+              }}
+              class={`cursor-pointer ${currentPage() === 'anki' ? 'opacity-100' : 'opacity-50'}`}
+            >
+              Anki
             </h1>
           </div>
           {token() ? (
@@ -133,7 +144,19 @@ const App: Component = () => {
           }
         }
       }}>
-        {currentPage() === 'goods' ? (
+        {currentPage() === 'blog' && (
+          <div class="border-2 border-red-600 bg-red-50 text-red-800 p-3 mb-4 text-[13px] leading-relaxed">
+            <div>
+              本网站正在经历 <b>heavy development</b> + <b>删档构建</b>，预计 <b>2026 年 3 月</b>开发完成。
+              <b>当前网站处于不可用状态</b>。
+              <p>页面底部的 AI : 咨询以了解更多</p>
+              <p> AI : Available </p>
+            </div>
+          </div>
+        )}
+        {currentPage() === 'anki' ? (
+          <AnkiStub />
+        ) : currentPage() === 'goods' ? (
           <div class="post-list">
             <Good title="示例链接" url="https://example.com" description="这是一个示例链接" />
             <Good title="Go Green Tea GC" url="https://tonybai.com/2025/10/31/deep-into-go-green-tea-gc/" description="垃圾回收器：从 DFS 到 BFS" />

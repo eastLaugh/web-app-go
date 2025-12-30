@@ -8,6 +8,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -46,7 +47,7 @@ func NewServer(mg *mongo.Client) *Server {
 func (s *Server) PostAuth(w http.ResponseWriter, r *http.Request) {
 	var request api.PostAuthJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -56,40 +57,44 @@ func (s *Server) PostAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := payload.Export()
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"token": token})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
 
 func (s *Server) GetPosts(w http.ResponseWriter, r *http.Request, params api.GetPostsParams) {
 	posts, err := s.postRepo.GetPostsByFile(r.Context(), params.File)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, posts)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(posts)
 }
 
 func (s *Server) PostPosts(w http.ResponseWriter, r *http.Request) {
 	email, ok := r.Context().Value("email").(string)
 	if !ok {
-		writeJSONError(w, http.StatusUnauthorized, "未授权")
+		http.Error(w, "未授权", http.StatusUnauthorized)
 		return
 	}
 
 	req := new(api.PostPostsJSONRequestBody)
 	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := s.postRepo.InsertPost(r.Context(), email, req.Content, req.File); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	slog.Info("新评论", "email", email, "file", req.File, "content", req.Content)
-	writeJSON(w, http.StatusOK, map[string]string{"message": "success"})
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
@@ -111,35 +116,15 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 		docs, err := s.vecAdapter.Search(r.Context(), lastUserMsg, 5)
 		if err != nil {
 			log.Printf("RAG 检索失败: %v", err)
+			runtime.Breakpoint()
 		} else if len(docs) > 0 {
-			var ragCtx strings.Builder
-			ragCtx.WriteString("以下是我博客中的相关内容，你可以参考这些信息来回答用户的问题：\n\n")
-			for i, doc := range docs {
-				title := ""
-				if t, ok := doc.Metadata["title"].(string); ok {
-					title = t
-				}
-				file := ""
-				if f, ok := doc.Metadata["file"].(string); ok {
-					file = f
-				}
-				ragCtx.WriteString(fmt.Sprintf("[片段 %d]", i+1))
-				if title != "" {
-					ragCtx.WriteString(fmt.Sprintf(" 来源：《%s》", title))
-				}
-				if file != "" {
-					ragCtx.WriteString(fmt.Sprintf(" 文件：%s", file))
-				}
-				ragCtx.WriteString("\n")
-				ragCtx.WriteString(doc.PageContent)
-				ragCtx.WriteString("\n\n")
-			}
-			request.Messages = append([]struct {
+			ragCtx := "以下是我博客中的相关内容，你可以参考这些信息来回答用户的问题：\n\n" + formatDocs(docs)
+			request.Messages = append(request.Messages, struct {
 				Content string                      `json:"content"`
 				Role    api.ChatRequestMessagesRole `json:"role"`
 			}{
-				{Role: api.System, Content: ragCtx.String()},
-			}, request.Messages...)
+				Role: api.System, Content: ragCtx,
+			})
 		}
 	}
 
@@ -280,25 +265,7 @@ func (t *ToolVectorStore) Call(ctx context.Context, input string) (string, error
 	if len(docs) == 0 {
 		return "未找到相关文档", nil
 	}
-
-	var result strings.Builder
-	result.WriteString(fmt.Sprintf("找到 %d 个相关文档：\n\n", len(docs)))
-	for i, doc := range docs {
-		title := ""
-		if t, ok := doc.Metadata["title"].(string); ok {
-			title = t
-		}
-		file := ""
-		if f, ok := doc.Metadata["file"].(string); ok {
-			file = f
-		}
-		result.WriteString(fmt.Sprintf("[%d] %s\n", i+1, title))
-		if file != "" {
-			result.WriteString(fmt.Sprintf("文件: %s\n", file))
-		}
-		result.WriteString(fmt.Sprintf("内容: %s\n\n", doc.PageContent))
-	}
-	return result.String(), nil
+	return fmt.Sprintf("找到 %d 个相关文档：\n\n%s", len(docs), formatDocs(docs)), nil
 }
 
 func (t *ToolVectorStore) Description() string {
@@ -309,12 +276,21 @@ func (t *ToolVectorStore) Name() string {
 	return "vector_search"
 }
 
-func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(data)
-}
-
-func writeJSONError(w http.ResponseWriter, statusCode int, message string) {
-	writeJSON(w, statusCode, map[string]string{"error": message})
+func formatDocs(docs []schema.Document) string {
+	var sb strings.Builder
+	for i, doc := range docs {
+		title, _ := doc.Metadata["title"].(string)
+		file, _ := doc.Metadata["file"].(string)
+		fmt.Fprintf(&sb, "[%d]", i+1)
+		if title != "" {
+			fmt.Fprintf(&sb, " %s", title)
+		}
+		if file != "" {
+			fmt.Fprintf(&sb, " (%s)", file)
+		}
+		fmt.Fprintf(&sb, "\n")
+		fmt.Fprintf(&sb, "%s", doc.PageContent)
+		fmt.Fprintf(&sb, "\n\n")
+	}
+	return sb.String()
 }

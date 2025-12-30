@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
@@ -112,4 +113,10 @@ func initMongo() *mongo.Client {
 	}
 	log.Printf("MongoDB 连接成功")
 	return client
+}
+
+func assert(cond bool, msg ...string) {
+	if !cond {
+		panic(strings.Join(msg, " "))
+	}
 }

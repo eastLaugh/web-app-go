@@ -76,34 +76,29 @@ func Middleware(next http.Handler) http.Handler {
 
 		token := r.Header.Get("Authorization")
 		if token == "" {
-			writeError(w, http.StatusUnauthorized, "未授权")
+			http.Error(w, "未授权", http.StatusUnauthorized)
 			return
 		}
 		token = strings.TrimPrefix(token, "Bearer ")
 		if token == "" {
-			writeError(w, http.StatusUnauthorized, "未授权")
+			http.Error(w, "未授权", http.StatusUnauthorized)
 			return
 		}
 		var payload Payload
 		err := payload.Import(token)
 		if err != nil {
-			writeError(w, http.StatusUnauthorized, err.Error())
+			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
 		if payload.Expire < time.Now().Unix() {
-			writeError(w, http.StatusUnauthorized, "token 已过期")
+			http.Error(w, "token 已过期", http.StatusUnauthorized)
 			return
 		}
-		// 将 email 存储到 context 中
+
+		// 直接替换上下文
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, "email", payload.Email)
 		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)
 	})
-}
-
-func writeError(w http.ResponseWriter, statusCode int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
