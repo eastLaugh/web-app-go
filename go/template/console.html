@@ -14,7 +14,7 @@
     <script>
         function rebuildIndex() {
             fetch('/rebuild-index', { method: 'GET' })
-                .then(r => r.json())
+                .then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(t)))
                 .then(data => document.getElementById('result').textContent = JSON.stringify(data))
                 .catch(err => document.getElementById('result').textContent = 'Error: ' + err);
         }

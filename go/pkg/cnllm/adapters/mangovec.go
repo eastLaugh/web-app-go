@@ -18,6 +18,7 @@ type VecAdapter interface {
 	Search(ctx context.Context, query string, topK int) ([]schema.Document, error)
 	AddDocuments(ctx context.Context, docs []schema.Document) error
 	ClearAll(ctx context.Context) error
+	GetIndexedFiles(ctx context.Context) ([]string, error)
 }
 
 // MangoVec MongoDB 向量存储适配器实现（不使用 Atlas，自己实现向量搜索）
@@ -159,6 +160,15 @@ func (m *MangoVec) ClearAll(ctx context.Context) error {
 		return fmt.Errorf("清空文档失败: %w", err)
 	}
 	return nil
+}
+
+// GetIndexedFiles 获取已索引的文件列表
+func (m *MangoVec) GetIndexedFiles(ctx context.Context) ([]string, error) {
+	var files []string
+	if err := m.coll.Distinct(ctx, "metadata.file", bson.M{}).Decode(&files); err != nil {
+		return nil, err
+	}
+	return files, nil
 }
 
 // cosineSimilarity 计算余弦相似度

@@ -155,21 +155,33 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) BuildRAGIndex(ctx context.Context, fsys fs.FS) error {
-	log.Printf("开始构建 RAG 索引...")
+	log.Printf("开始增量构建 RAG 索引...")
 
-	if err := s.vecAdapter.ClearAll(ctx); err != nil {
-		log.Printf("警告: 清空现有索引失败: %v", err)
+	// 获取已索引的文件
+	indexed, err := s.vecAdapter.GetIndexedFiles(ctx)
+	if err != nil {
+		log.Printf("警告: 获取已索引文件失败: %v", err)
+	}
+	log.Printf("已索引文件: %d 个", len(indexed))
+	indexedSet := make(map[string]bool, len(indexed))
+	for _, f := range indexed {
+		indexedSet[f] = true
 	}
 
 	var docs []schema.Document
-	err := fs.WalkDir(fsys, "blogs", func(path string, d fs.DirEntry, err error) error {
+	var newFiles []string
+	err = fs.WalkDir(fsys, "blogs", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() || !strings.HasSuffix(path, ".md") {
 			return nil
 		}
+		if indexedSet[path] {
+			return nil
+		}
 
+		newFiles = append(newFiles, path)
 		content, err := fs.ReadFile(fsys, path)
 		if err != nil {
 			return err
@@ -191,12 +203,18 @@ func (s *Server) BuildRAGIndex(ctx context.Context, fsys fs.FS) error {
 		return fmt.Errorf("加载博客文件失败: %w", err)
 	}
 
-	log.Printf("找到 %d 个文档块，开始添加到向量存储...", len(docs))
+	if len(newFiles) == 0 {
+		log.Printf("无新文件需要索引")
+		return nil
+	}
+
+	log.Printf("新增文件: %v", newFiles)
+	log.Printf("共 %d 个文档块，开始添加到向量存储...", len(docs))
 	if err := s.vecAdapter.AddDocuments(ctx, docs); err != nil {
 		return fmt.Errorf("添加文档失败: %w", err)
 	}
 
-	log.Printf("RAG 索引构建完成，共处理 %d 个文档块", len(docs))
+	log.Printf("RAG 索引构建完成")
 	return nil
 }
 
