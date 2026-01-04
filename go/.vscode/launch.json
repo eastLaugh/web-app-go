@@ -22,6 +22,16 @@
             //使用.env
             "envFile": "${workspaceFolder}/../.env",
             "console": "integratedTerminal",
+        },
+        {
+            "name": "测试mongo",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/mongo_test.go",
+            //使用.env
+            "envFile": "${workspaceFolder}/../.env",
+            "console": "integratedTerminal",
         }
     ]
 }

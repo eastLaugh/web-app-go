@@ -7,8 +7,8 @@ run: $(BINARY)
 $(BINARY): go/dist $(G0_SRC) $(wildcard go/template/*.*)
 	cd go && go mod tidy && go build -o ../$(BINARY) .
 
-# make 不支持递归 ** 通配符，必须注明文件。此外，依赖目录是无效的，目录的 mtime 取决于条目的结构，而无关内部文件的元信息。
-go/dist: $(wildcard solid-project/src/*) $(wildcard solid-project/public/*)
+# wildcard 不支持递归 ** 通配符，必须注明文件。此外，依赖目录是无效的，目录的 mtime 取决于条目的结构，而无关内部文件的元信息。
+go/dist: $(shell find solid-project/src -name "*.*") $(shell find solid-project/public -name "*.*")
 	cd solid-project && npm install && npm run build
 
 

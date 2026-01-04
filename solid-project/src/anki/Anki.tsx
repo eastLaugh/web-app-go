@@ -1,6 +1,32 @@
 import type { Component } from 'solid-js';
+import { createSignal } from 'solid-js';
+import { getNextCard } from '../api';
 
 export const AnkiStub: Component = () => {
+  const [loading, setLoading] = createSignal(false);
+
+  const handleGo = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('请先登录');
+      return;
+    }
+    setLoading(true);
+    try {
+      const nextFile = await getNextCard(token);
+      if (!nextFile) {
+        alert('没有更多卡片了');
+        return;
+      }
+      window.location.hash = nextFile;
+    } catch (e) {
+      alert('获取卡片失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+
   return (
     <div class="post">
       <div class="post-nav">
@@ -8,33 +34,18 @@ export const AnkiStub: Component = () => {
           ← 返回
         </a>
       </div>
-      <h2 class="text-lg font-medium mb-2">Anki（Stub）</h2>
+      <h2 class="text-lg font-medium mb-2">Anki</h2>
       <div class="text-sm text-gray-600 mb-6">
-        这是一个精简版 Anki 的占位页面：路由与页面结构已就位，具体功能后续再补。
+        点击 GO! 开始复习下一张卡片
       </div>
 
-      <div class="border border-black p-4 mb-6">
-        <div class="text-sm mb-3">卡组</div>
-        <div class="text-[13px] text-gray-700 space-y-2">
-          <div class="flex justify-between">
-            <span>示例卡组</span>
-            <span>新卡 0 · 待复习 0</span>
-          </div>
-          <div class="flex justify-between opacity-60">
-            <span>（占位）英语</span>
-            <span>新卡 0 · 待复习 0</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="flex gap-2.5">
-        <button class="px-5 py-1.5 border border-black bg-white cursor-not-allowed text-[13px] opacity-60" disabled>
-          开始复习（TODO）
-        </button>
-        <button class="px-5 py-1.5 border border-black bg-white cursor-not-allowed text-[13px] opacity-60" disabled>
-          新建卡片（TODO）
-        </button>
-      </div>
+      <button
+        onClick={handleGo}
+        disabled={loading()}
+        class="px-8 py-3 border border-black bg-black text-white text-base cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {loading() ? '加载中...' : 'GO!'}
+      </button>
     </div>
   );
 };

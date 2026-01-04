@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=https://spec.openapis.org/oas/3.0/schema/2021-09-28
+openapi: 3.0.3
+info:
+  title: Anki API
+  version: 1.0.0
+
+paths:
+  /next:
+    get:
+      summary: 获取下一张卡片
+      operationId: getNextCard
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetNextCardResponse'
+        '204':
+          description: 无待复习卡片
+
+  /review:
+    post:
+      summary: 提交学习记录
+      operationId: submitReview
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          description: 成功
+
+components:
+  schemas:
+    GetNextCardResponse:
+      type: object
+      properties:
+        file:
+          type: string
+
+    ReviewRequest:
+      type: object
+      required:
+        - file
+        - duration
+      properties:
+        file:
+          type: string
+        duration:
+          type: integer
+          description: 驻留时间
+

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
+	anki_api "github.com/eastLaugh/web-app-go/go/internal/api/anki"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
 	"github.com/eastLaugh/web-app-go/go/ports"
 	"github.com/joho/godotenv"
@@ -48,7 +49,8 @@ var consoleTmpl = template.Must(template.ParseFS(consoleTemplate, "template/*"))
 var serverChan chan *ports.Server = make(chan *ports.Server, 1)
 
 func Serve(fsys fs.FS) {
-	server := ports.NewServer(initMongo())
+	mg := initMongo()
+	server := ports.NewServer(mg)
 	serverChan <- server
 
 	mux := http.NewServeMux()
@@ -57,8 +59,13 @@ func Serve(fsys fs.FS) {
 		Middlewares: []api.MiddlewareFunc{tokens.Middleware},
 	})))
 
+	ankiApp := ports.NewAnki(server, fsys, mg.Database("webapp").Collection("anki"))
+	mux.Handle("/api/anki/v1/", http.StripPrefix("/api/anki/v1", anki_api.HandlerWithOptions(ankiApp, anki_api.StdHTTPServerOptions{
+		Middlewares: []anki_api.MiddlewareFunc{ports.AnkiMiddleware, tokens.Middleware},
+	})))
+
 	mux.HandleFunc("GET /panic", func(w http.ResponseWriter, r *http.Request) {
-		panic("panic test")
+		panic(nil)
 	})
 
 	// 文件服务器

@@ -1,2 +1,2 @@
-//go:generate go tool oapi-codegen -config cfg.yaml ../../../api/users.yaml
+//go:generate go tool oapi-codegen -config cfg.yaml users.yaml
 package api

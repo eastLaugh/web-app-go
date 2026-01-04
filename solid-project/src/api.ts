@@ -29,3 +29,27 @@ export const getPosts = async (file: string) => {
   return await res.json();
 };
 
+export const getNextCard = async (token: string) => {
+  const res = await fetch('/api/anki/v1/next', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (res.status === 204) return null;
+  if (!res.ok) throw new Error('获取卡片失败');
+  const data = await res.json();
+  return data.file || null;
+};
+
+export const submitReview = async (token: string, file: string, duration: number) => {
+  const res = await fetch('/api/anki/v1/review', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ file, duration }),
+  });
+  if (!res.ok) throw new Error('提交学习记录失败');
+  
+};

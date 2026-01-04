@@ -1,10 +1,31 @@
 import type { Component } from 'solid-js';
-import { createSignal, createEffect } from 'solid-js';
+import { createSignal, createEffect, onCleanup } from 'solid-js';
 import { marked } from 'marked';
-import { login, createPost, getPosts } from './api';
+import { login, createPost, getPosts, getNextCard, submitReview } from './api';
 import ChatBox, { collapseChat } from './ChatBox';
 import { AnkiStub } from './anki/Anki';
 import './App.css';
+
+const AnkiBar: Component<{ onDone: (elapsed: number) => void }> = (props) => {
+  const [elapsed, setElapsed] = createSignal(0);
+
+  const timer = setInterval(() => setElapsed(e => e + 1), 1000);
+  onCleanup(() => clearInterval(timer));
+
+  return (
+    <div class="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-[600px] px-5 z-50">
+      <div class="flex items-center gap-4 bg-white border border-black px-5 py-3 shadow-lg">
+        <span class="text-sm text-gray-500 font-mono">{elapsed()}s</span>
+        <button
+          class="flex-1 py-3 border border-black bg-black text-white text-base cursor-pointer"
+          onClick={() => props.onDone(elapsed())}
+        >
+          我已学会
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const Good: Component<{ title: string; url: string; description?: string }> = (props) => (
   <div class="post-item">
@@ -259,6 +280,28 @@ const App: Component = () => {
       <div class="mt-10 text-center text-xs pb-[100px]">
         <a href="mailto:east_laugh@qq.com" class="text-black no-underline">east_laugh@qq.com</a>
       </div>
+      {currentFile().startsWith('blogs/anki/') && (
+        <AnkiBar onDone={async (elapsed) => {
+          const file = currentFile();
+          const t = token();
+          if (!t) {
+            alert('请先登录');
+            return;
+          }
+          try {
+            await submitReview(t, file, elapsed);
+            const nextFile = await getNextCard(t);
+            if (!nextFile) {
+              alert('没有更多卡片了');
+              window.location.hash = 'anki';
+              return;
+            }
+            window.location.hash = nextFile;
+          } catch (e) {
+            alert('操作失败');
+          }
+        }} />
+      )}
       <ChatBox />
     </div>
   );
