@@ -94,8 +94,6 @@ type Learner struct {
 	CreatedAt time.Time     `bson:"created_at"`
 	Duration  time.Duration `bson:"duration"`
 	Files     Files         `bson:"files"`
-	TestUTF8  string        `bson:"测试UTF8支持情况"`
-	TestPtr   *string       `bson:"测试Ptr支持情况"`
 }
 
 func (repo mongoAnkiRepo) GetLearnerStatus(email string) (string, error) {
