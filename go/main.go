@@ -118,7 +118,8 @@ func initMongo() *mongo.Client {
 	if err := client.Database("admin").RunCommand(context.TODO(), bson.D{{Key: "ping", Value: 1}}).Decode(&result); err != nil {
 		panic(err)
 	}
-	log.Printf("MongoDB 连接成功")
+
+	// log.Printf("MongoDB 连接成功")
 	return client
 }
 

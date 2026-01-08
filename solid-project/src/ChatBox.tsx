@@ -146,7 +146,13 @@ const ChatBox: Component = () => {
               throw new Error(text.slice(7));
             }
             if (text) {
-              setCurrentContent(prev => prev + text);
+              try {
+                const parsed = JSON.parse(text);
+                
+                setCurrentContent(prev => prev + parsed);
+              } catch {
+                setCurrentContent(prev => prev + text);
+              }
             }
           }
         }
