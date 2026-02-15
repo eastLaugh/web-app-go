@@ -1,3 +1,5 @@
+# Deprecated: use docker compose instead
+
 BINARY := server_binary
 
 G0_SRC := $(shell find go -name "*.go")

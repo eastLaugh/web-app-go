@@ -8,24 +8,9 @@ import (
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
 	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/shared"
 )
 
 const maxToolRounds = 10
-
-var chatTools = []openai.ChatCompletionToolUnionParam{
-	openai.ChatCompletionFunctionTool(shared.FunctionDefinitionParam{
-		Name:        "vector_search",
-		Description: openai.String("在博客文档中搜索相关内容，返回最相似的文档片段。可用中文精简关键字。"),
-		Parameters: openai.FunctionParameters{
-			"type": "object",
-			"properties": map[string]any{
-				"query": map[string]string{"type": "string", "description": "搜索关键词或问题"},
-			},
-			"required": []string{"query"},
-		},
-	}),
-}
 
 func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 	var request api.PostChatJSONRequestBody
@@ -45,12 +30,12 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 		panic("不支持 SSE")
 	}
 
-	ctx := r.Context()
-	for round := 0; round < maxToolRounds; round++ {
+	ctx := context.WithValue(r.Context(), Server{}, s)
+	for range maxToolRounds {
 		params := openai.ChatCompletionNewParams{
 			Messages: messages,
 			Model:    openai.ChatModel(s.chatModel),
-			Tools:    chatTools,
+			Tools:    s.Tools.ToParams(),
 		}
 
 		completion, err := s.client.Chat.Completions.New(ctx, params)
@@ -85,14 +70,10 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 			var result string
 			switch v := tc.AsAny().(type) {
 			case openai.ChatCompletionMessageFunctionToolCall:
-				if v.Function.Name == "vector_search" {
-					var args struct {
-						Query string `json:"query"`
-					}
-					_ = json.Unmarshal([]byte(v.Function.Arguments), &args)
-					result, _ = s.runVectorSearch(ctx, args.Query)
-				} else {
-					result = "未知工具"
+				var err error
+				result, err = s.Tools.Execute(ctx, v.Function.Name, v.Function.Arguments)
+				if err != nil {
+					result = err.Error()
 				}
 			default:
 				result = "不支持的 tool call"

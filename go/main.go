@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
@@ -32,7 +31,6 @@ func init() {
 }
 
 func main() {
-
 	var fsys fs.FS
 	fsys, _ = fs.Sub(dist, "dist")
 
@@ -63,10 +61,6 @@ func Serve(fsys fs.FS) {
 	mux.Handle("/api/anki/v1/", http.StripPrefix("/api/anki/v1", anki_api.HandlerWithOptions(ankiApp, anki_api.StdHTTPServerOptions{
 		Middlewares: []anki_api.MiddlewareFunc{ports.AnkiMiddleware, tokens.Middleware},
 	})))
-
-	mux.HandleFunc("GET /panic", func(w http.ResponseWriter, r *http.Request) {
-		panic(nil)
-	})
 
 	// 文件服务器
 	mux.Handle("/app/", http.StripPrefix("/app/", http.FileServer(http.FS(fsys))))
@@ -121,10 +115,4 @@ func initMongo() *mongo.Client {
 
 	// log.Printf("MongoDB 连接成功")
 	return client
-}
-
-func assert(cond bool, msg ...string) {
-	if !cond {
-		panic(strings.Join(msg, " "))
-	}
 }

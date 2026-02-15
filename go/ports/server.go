@@ -16,6 +16,7 @@ import (
 	"github.com/eastLaugh/web-app-go/go/internal/repo"
 	"github.com/eastLaugh/web-app-go/go/pkg/adapters"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
+	"github.com/eastLaugh/web-app-go/go/pkg/tools"
 	"github.com/openai/openai-go/v3"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
@@ -28,6 +29,7 @@ type Server struct {
 	client     *openai.Client
 	chatModel  string
 	vecAdapter adapters.VecAdapter
+	Tools      *tools.Registry
 }
 
 func NewServer(mg *mongo.Client) *Server {
@@ -42,13 +44,15 @@ func NewServer(mg *mongo.Client) *Server {
 	}
 	vecAdapter := adapters.NewMangoVec(mg.Database("webapp").Collection("vector_docs"), &client, embModel)
 
-	return &Server{
+	s := &Server{
 		postRepo:   repo.NewMangoPostRepo(mg.Database("webapp").Collection("posts")),
 		mg:         mg,
 		client:     &client,
 		chatModel:  chatModel,
 		vecAdapter: vecAdapter,
 	}
+	s.Tools = registerChatTools(s)
+	return s
 }
 
 func (s *Server) PostAuth(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +144,7 @@ func (s *Server) BuildRAGIndex(ctx context.Context, fsys fs.FS) error {
 		for _, chunk := range chunks {
 			docs = append(docs, adapters.Document{
 				PageContent: chunk.Content,
-				Metadata: map[string]interface{}{
+				Metadata: map[string]any{
 					"file":  chunk.File,
 					"title": chunk.Title,
 				},
@@ -178,8 +182,8 @@ func processMarkdownCoarse(content string, file string) []markdownChunk {
 	title := ""
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "# ") {
-			title = strings.TrimPrefix(line, "# ")
+		if after, ok := strings.CutPrefix(line, "# "); ok {
+			title = after
 			break
 		}
 	}

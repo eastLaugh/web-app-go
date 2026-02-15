@@ -1,5 +1,4 @@
 services:
-
   webapp:
     build:
       context: .

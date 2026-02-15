@@ -63,9 +63,9 @@ func (m *MangoVec) Search(ctx context.Context, query string, topK int) ([]Docume
 	queryVector := vecs[0]
 
 	type docWithVector struct {
-		PageContent string                 `bson:"pageContent"`
-		Embedding   []float32              `bson:"embedding"`
-		Metadata    map[string]interface{} `bson:"metadata"`
+		PageContent string         `bson:"pageContent"`
+		Embedding   []float32      `bson:"embedding"`
+		Metadata    map[string]any `bson:"metadata"`
 	}
 
 	cursor, err := m.coll.Find(ctx, bson.M{}, options.Find().SetProjection(bson.M{
@@ -116,10 +116,7 @@ func (m *MangoVec) AddDocuments(ctx context.Context, docs []Document) error {
 	}
 	const batchSize = 10
 	for i := 0; i < len(docs); i += batchSize {
-		end := i + batchSize
-		if end > len(docs) {
-			end = len(docs)
-		}
+		end := min(i+batchSize, len(docs))
 		batch := docs[i:end]
 		texts := make([]string, len(batch))
 		for j, doc := range batch {
@@ -129,12 +126,12 @@ func (m *MangoVec) AddDocuments(ctx context.Context, docs []Document) error {
 		if err != nil {
 			return fmt.Errorf("向量化文档失败 (batch %d-%d): %w", i, end, err)
 		}
-		docsInterface := make([]interface{}, len(batch))
+		docsInterface := make([]any, len(batch))
 		for j, doc := range batch {
 			docsInterface[j] = bson.M{
 				"pageContent": doc.PageContent,
 				"embedding":   vecs[j],
-				"metadata":   doc.Metadata,
+				"metadata":    doc.Metadata,
 			}
 		}
 		if _, err := m.coll.InsertMany(ctx, docsInterface); err != nil {
@@ -160,7 +157,7 @@ func cosineSimilarity(a, b []float32) float64 {
 		return 0
 	}
 	var dotProduct, normA, normB float64
-	for i := 0; i < len(a); i++ {
+	for i := range a {
 		dotProduct += float64(a[i] * b[i])
 		normA += float64(a[i] * a[i])
 		normB += float64(b[i] * b[i])

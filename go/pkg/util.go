@@ -50,15 +50,3 @@ func isWSL() bool {
 	}
 	return strings.Contains(strings.ToLower(string(releaseData)), "microsoft")
 }
-
-func Must[T any](value T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-	return value
-}
-
-// go 1.26 will add
-func New[T any](v T) *T {
-	return &v
-}

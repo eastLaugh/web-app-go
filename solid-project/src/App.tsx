@@ -190,11 +190,7 @@ const App: Component = () => {
 
             <Post file="blogs/calculate.md" title="计算器" time="2025-12-16T06:44:06.962Z" />
             <Post file="blogs/yi-chu-gin.md" title="移除了 Gin，拥抱标准库" time="2025-12-12T20:30:39.589Z" />
-            <Post file="blogs/1213test.md" title="1213test" time="2025-12-12T19:57:27.981Z" />
-            <Post file="blogs/picture_test.md" title="测试图片渲染" time="2025-12-08T16:23:48.082Z" />
             <Post file="blogs/zhuang-tai-ji.md" title="状态机" time="2025-11-26T07:11:32.852Z" />
-            <Post file="blogs/shan-dang-ce-shi.md" title="删档测试" time="2025-11-25T10:05:30.863Z" />
-            <Post file="blogs/post.md" title="Hello World" time="2025-11-22T09:38:12.950Z" />
           </div>
         ) : (
           <article class="post">
