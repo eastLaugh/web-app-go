@@ -9,7 +9,7 @@ services:
     ports:
       - "80:80"
       - "2333:2333" # console
-      - "2345:2345" # debug
+      - "2345:2345" # dlv
 
     environment:
       EASTLAUGH_TOKEN_PWD: ${EASTLAUGH_TOKEN_PWD}
@@ -17,9 +17,10 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL}
       OPENAI_MODEL: ${OPENAI_MODEL}
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL}
+      EASTLAUGH_ADDR: ${EASTLAUGH_ADDR}
+      EASTLAUGH_CONSOLE_ADDR: ${EASTLAUGH_CONSOLE_ADDR}
+      
       EASTLAUGH_MONGODB_URI: mongodb://mongo:27017/webapp
-      EASTLAUGH_ADDR: :80
-      EASTLAUGH_CONSOLE_ADDR: :2333
   mongo:
     image: mongo
     ports:

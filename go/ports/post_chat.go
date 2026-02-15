@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
 	"github.com/openai/openai-go/v3"
@@ -19,7 +20,20 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	messages := api.ChatRequestToOpenAIMessages(request)
+	if request.ConversationId == "" {
+		http.Error(w, "conversation_id required", http.StatusBadRequest)
+		return
+	}
+	s.convMu.RLock()
+	hist := s.convStore[request.ConversationId]
+	s.convMu.RUnlock()
+
+	var messages []openai.ChatCompletionMessageParamUnion
+	if len(hist) == 0 {
+		messages = []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(api.GetSystemPrompt()), openai.UserMessage(request.Content)}
+	} else {
+		messages = append(hist, openai.UserMessage(request.Content))
+	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -27,61 +41,80 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		panic("不支持 SSE")
+		panic("not support SSE")
 	}
 
-	ctx := context.WithValue(r.Context(), Server{}, s)
+	ctx := context.WithValue(r.Context(), reflect.TypeFor[*Server](), s)
 	for range maxToolRounds {
 		params := openai.ChatCompletionNewParams{
 			Messages: messages,
-			Model:    openai.ChatModel(s.chatModel),
+			Model:    s.chatModel,
 			Tools:    s.Tools.ToParams(),
 		}
 
-		completion, err := s.client.Chat.Completions.New(ctx, params)
-		if err != nil {
+		stream := s.client.Chat.Completions.NewStreaming(ctx, params)
+		var acc openai.ChatCompletionAccumulator
+		for stream.Next() {
+			chunk := stream.Current()
+			if !acc.AddChunk(chunk) {
+				break
+			}
+			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+				escaped, _ := json.Marshal(chunk.Choices[0].Delta.Content)
+				fmt.Fprintf(w, "data: %s\n\n", escaped)
+				flusher.Flush()
+			}
+		}
+		if err := stream.Err(); err != nil {
 			fmt.Fprintf(w, "data: [ERROR]%s\n\n", err.Error())
 			flusher.Flush()
 			return
 		}
-
-		if len(completion.Choices) == 0 {
+		if len(acc.Choices) == 0 {
 			fmt.Fprintf(w, "data: [ERROR]empty choices\n\n")
 			flusher.Flush()
 			return
 		}
 
-		msg := completion.Choices[0].Message
+		msg := acc.Choices[0].Message
 		messages = append(messages, msg.ToParam())
 
 		if len(msg.ToolCalls) == 0 {
-			// 无 tool call，为最终回复，以 SSE 写出
-			content := msg.Content
-			if content != "" {
-				escaped, _ := json.Marshal(content)
-				fmt.Fprintf(w, "data: %s\n\n", escaped)
-			}
+			s.convMu.Lock()
+			s.convStore[request.ConversationId] = messages
+			s.convMu.Unlock()
 			flusher.Flush()
 			return
 		}
 
-		// 执行 tool calls，追加 tool 结果到 messages
+		var toolNames []string
 		for _, tc := range msg.ToolCalls {
-			var result string
-			switch v := tc.AsAny().(type) {
-			case openai.ChatCompletionMessageFunctionToolCall:
-				var err error
-				result, err = s.Tools.Execute(ctx, v.Function.Name, v.Function.Arguments)
+			if tc.Type == "function" {
+				toolNames = append(toolNames, tc.Function.Name)
+			}
+		}
+		if len(toolNames) > 0 {
+			event, _ := json.Marshal(map[string]any{"event": "tool_call", "tools": toolNames})
+			fmt.Fprintf(w, "data: %s\n\n", event)
+			flusher.Flush()
+		}
+
+		for _, tc := range msg.ToolCalls {
+			if tc.Type == "function" {
+				result, err := s.Tools.Execute(ctx, tc.Function.Name, tc.Function.Arguments)
 				if err != nil {
 					result = err.Error()
 				}
-			default:
-				result = "不支持的 tool call"
+				messages = append(messages, openai.ToolMessage(result, tc.ID))
+			} else {
+				messages = append(messages, openai.ToolMessage("不支持的 tool call", tc.ID))
 			}
-			messages = append(messages, openai.ToolMessage(result, tc.ID))
 		}
 	}
 
+	s.convMu.Lock()
+	s.convStore[request.ConversationId] = messages
+	s.convMu.Unlock()
 	fmt.Fprintf(w, "data: [ERROR]超过最大 tool 轮数\n\n")
 	flusher.Flush()
 }

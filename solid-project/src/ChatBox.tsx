@@ -5,9 +5,9 @@ import './ChatBox.css';
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  toolCalls?: string[];
 }
 
-const STORAGE_KEY = 'chat_messages';
 const COLLAPSED_KEY = 'chat_collapsed';
 
 // 全局收起函数
@@ -20,23 +20,13 @@ export const collapseChat = () => {
 };
 
 const ChatBox: Component = () => {
-  // 从 localStorage 加载消息
-  const loadMessages = (): Message[] => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (e) {
-      console.error('加载聊天记录失败:', e);
-    }
-    return [];
-  };
-
-  const [messages, setMessages] = createSignal<Message[]>(loadMessages());
+  const [conversationId, setConversationId] = createSignal<string | null>(null);
+  const [messages, setMessages] = createSignal<Message[]>([]);
   const [input, setInput] = createSignal('');
   const [isLoading, setIsLoading] = createSignal(false);
   const [currentContent, setCurrentContent] = createSignal('');
+  const [callingTools, setCallingTools] = createSignal<string[] | null>(null);
+  const [toolsCalledInReply, setToolsCalledInReply] = createSignal<string[]>([]);
   const [isCollapsed, setIsCollapsed] = createSignal((() => {
     try {
       return localStorage.getItem(COLLAPSED_KEY) === 'true';
@@ -58,20 +48,6 @@ const ChatBox: Component = () => {
     }
   };
 
-  // 保存消息到 localStorage
-  createEffect(() => {
-    const msgs = messages();
-    try {
-      if (msgs.length > 0) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs));
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
-      }
-    } catch (e) {
-      console.error('保存聊天记录失败:', e);
-    }
-  });
-
   // 自动滚动到底部
   createEffect(() => {
     const msgs = messages();
@@ -86,8 +62,10 @@ const ChatBox: Component = () => {
   });
 
   createEffect(() => {
-    if (currentContent() && messagesContentContainer) {
-      // 流式输出时实时滚动
+    currentContent();
+    callingTools();
+    toolsCalledInReply();
+    if (messagesContentContainer) {
       setTimeout(() => {
         if (messagesContentContainer) {
           messagesContentContainer.scrollTop = messagesContentContainer.scrollHeight;
@@ -96,27 +74,43 @@ const ChatBox: Component = () => {
     }
   });
 
+  const ensureConversation = async (): Promise<string> => {
+    let id = conversationId();
+    if (id) return id;
+    const res = await fetch('/api/v1/conversations', { method: 'POST' });
+    if (!res.ok) throw new Error('创建对话失败');
+    const data = await res.json();
+    id = data.id;
+    setConversationId(id);
+    return id;
+  };
+
+  const handleNewConversation = async () => {
+    const res = await fetch('/api/v1/conversations', { method: 'POST' });
+    if (!res.ok) return;
+    const data = await res.json();
+    setConversationId(data.id);
+    setMessages([]);
+  };
+
   const sendMessage = async () => {
     const text = input().trim();
     if (!text || isLoading()) return;
 
     const userMessage: Message = { role: 'user', content: text };
-    const updatedMessages = [...messages(), userMessage];
-    setMessages(updatedMessages);
+    setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
     setCurrentContent('');
+    setCallingTools(null);
+    setToolsCalledInReply([]);
 
     try {
+      const convId = await ensureConversation();
       const response = await fetch('/api/v1/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: updatedMessages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-        }),
+        body: JSON.stringify({ conversation_id: convId, content: text }),
       });
 
       if (!response.ok) {
@@ -148,9 +142,17 @@ const ChatBox: Component = () => {
             if (text) {
               try {
                 const parsed = JSON.parse(text);
-                
-                setCurrentContent(prev => prev + parsed);
+                if (parsed && parsed.event === 'tool_call' && Array.isArray(parsed.tools)) {
+                  setCallingTools(parsed.tools);
+                  setToolsCalledInReply(prev => [...prev, ...parsed.tools]);
+                } else if (typeof parsed === 'string') {
+                  setCallingTools(null);
+                  setCurrentContent(prev => prev + parsed);
+                } else {
+                  setCurrentContent(prev => prev + String(parsed));
+                }
               } catch {
+                setCallingTools(null);
                 setCurrentContent(prev => prev + text);
               }
             }
@@ -159,8 +161,11 @@ const ChatBox: Component = () => {
       }
 
       const finalContent = currentContent();
-      if (finalContent) {
-        setMessages(prev => [...prev, { role: 'assistant', content: finalContent }]);
+      const toolsCalled = toolsCalledInReply();
+      setCallingTools(null);
+      setToolsCalledInReply([]);
+      if (finalContent || toolsCalled.length > 0) {
+        setMessages(prev => [...prev, { role: 'assistant', content: finalContent, toolCalls: toolsCalled.length > 0 ? toolsCalled : undefined }]);
         setCurrentContent('');
       }
       setIsLoading(false);
@@ -169,6 +174,8 @@ const ChatBox: Component = () => {
       setMessages(prev => [...prev, { role: 'assistant', content: '抱歉，发送消息失败，请稍后重试。' }]);
       setIsLoading(false);
       setCurrentContent('');
+      setCallingTools(null);
+      setToolsCalledInReply([]);
     }
   };
 
@@ -176,15 +183,10 @@ const ChatBox: Component = () => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       const text = input().trim();
-      // 检查是否是 /clear 命令
       if (text === '/clear') {
         setMessages([]);
         setInput('');
-        try {
-          localStorage.removeItem(STORAGE_KEY);
-        } catch (e) {
-          console.error('清除聊天记录失败:', e);
-        }
+        setConversationId(null);
         return;
       }
       sendMessage();
@@ -218,10 +220,15 @@ const ChatBox: Component = () => {
 
   return (
     <div class="chat-wrapper" ref={wrapperElement}>
-      {messages().length > 0 || isLoading() ? (
+      {conversationId() != null || messages().length > 0 || isLoading() ? (
         <div 
           class={`chat-messages ${isCollapsed() ? 'collapsed' : ''}`}
         >
+          {conversationId() != null && (
+            <div class="chat-session-id" title={conversationId()!}>
+              {conversationId()}
+            </div>
+          )}
           <button class="chat-collapse-btn" onClick={handleCollapse} title="收起">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M8 4L4 8L8 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-90 8 8)"/>
@@ -231,19 +238,33 @@ const ChatBox: Component = () => {
             <For each={messages()}>
               {(msg) => (
                 <div class={`chat-message ${msg.role}`}>
-                  <div class="chat-message-content">{msg.content}</div>
+                  {msg.content ? <div class="chat-message-content">{msg.content}</div> : null}
+                  {msg.role === 'assistant' && msg.toolCalls?.map((name) => (
+                    <div class="chat-tool-done">调用了 {name}</div>
+                  ))}
                 </div>
               )}
             </For>
-            {isLoading() && currentContent() && (
-              <div class="chat-message assistant">
-                <div class="chat-message-content">{currentContent()}</div>
+            {isLoading() && (currentContent() || toolsCalledInReply().length > 0 || (callingTools() && callingTools()!.length > 0)) && (
+              <div class="chat-message assistant chat-message-inprogress">
+                {currentContent() && <div class="chat-message-content">{currentContent()}</div>}
+                <For each={toolsCalledInReply()}>
+                  {(name) => <div class="chat-tool-done">调用了 {name}</div>}
+                </For>
+                {callingTools() && callingTools()!.length > 0 && (
+                  <div class="chat-tool-calling">
+                    正在调用：{callingTools()!.join('、')}
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
       ) : null}
       <div class="chat-input-container" ref={inputContainer} onClick={handleInputClick}>
+        <button type="button" class="chat-new-conversation" onClick={(e) => { e.stopPropagation(); handleNewConversation(); }} title="新建对话">
+          新建对话
+        </button>
         <textarea
           class="chat-input"
           value={input()}

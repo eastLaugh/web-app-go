@@ -5,14 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"reflect"
 	"runtime"
+	"time"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/shared"
 )
 
-// Registry 工具注册表：name -> (fn, desc)。fn 必须为 func(ctx context.Context, args *T) (string, error)，执行时自动注入 ctx。
+// Registry 工具注册表：name -> (fn, desc)。fn 必须为 func(ctx context.Context, args *T) string，结果直接作为 ToolMessage 内容。
 type Registry struct {
 	tools map[string]tool
 }
@@ -23,7 +25,7 @@ type tool struct {
 	argsType reflect.Type // *Struct
 }
 
-// New 按 fn, desc, fn, desc, ... 解析 args 并建注册表。fn 必须为 func(ctx context.Context, args *T) (string, error)。
+// New 按 fn, desc, fn, desc, ... 解析 args 并建注册表。fn 必须为 func(ctx context.Context, args *T) string。
 func New(args ...any) *Registry {
 	r := &Registry{tools: make(map[string]tool)}
 	for i := 0; i < len(args); i += 2 {
@@ -41,8 +43,11 @@ func New(args ...any) *Registry {
 			panic("tools: fn must be func")
 		}
 		name := runtime.FuncForPC(v.Pointer()).Name()
-		if t.NumIn() != 2 || t.NumOut() != 2 {
-			panic("tools: fn must be func(ctx context.Context, args *T) (string, error), not method")
+		if t.NumIn() != 2 || t.NumOut() != 1 {
+			panic("tools: fn must be func(ctx context.Context, args *T) string, not method")
+		}
+		if t.Out(0).Kind() != reflect.String {
+			panic("tools: fn must return string")
 		}
 		ctxType := reflect.TypeFor[context.Context]()
 		if !t.In(0).Implements(ctxType) {
@@ -113,18 +118,35 @@ func (r *Registry) Execute(ctx context.Context, name string, argumentsJSON strin
 	if !ok {
 		return "", fmt.Errorf("tools: unknown tool %q", name)
 	}
-	slog.Info("工具执行", "tool", name, "args", argumentsJSON)
 	ptr := reflect.New(t.argsType.Elem())
 	if err := json.Unmarshal([]byte(argumentsJSON), ptr.Interface()); err != nil {
 		return "", fmt.Errorf("tools: unmarshal args: %w", err)
 	}
-	out := t.fn.Call([]reflect.Value{reflect.ValueOf(ctx), ptr})
-	if !out[1].IsNil() {
-		err := out[1].Interface().(error)
-		slog.Info("工具执行完毕", "tool", name, "err", err.Error())
-		return "", err
-	}
-	result := out[0].String()
-	slog.Info("工具执行完毕", "tool", name, "result_len", len(result))
+	// trace: 待打桩
+	result := onion(base)(t.fn, ctx, ptr)
 	return result, nil
+}
+
+type handler func(reflect.Value, context.Context, reflect.Value) string
+
+func onion(next handler) handler {
+	return func(fn reflect.Value, ctx context.Context, ptr reflect.Value) (result string) {
+		slog.Info("工具执行中", "tool", fn.String(), "args", ptr.Interface())
+		defer func(t time.Time) {
+			slog.Info("工具执行完毕", "result", result, "duration", time.Since(t))
+		}(time.Now())
+		result = next(fn, ctx, ptr)
+		return
+	}
+}
+
+func base(fn reflect.Value, ctx context.Context, ptr reflect.Value) string {
+	return fn.Call([]reflect.Value{reflect.ValueOf(ctx), ptr})[0].String()
+}
+
+var DefaultTools = []any{
+	func(ctx context.Context, _ *struct{}) string {
+		return fmt.Sprintf("%d", rand.N(100))
+	},
+	"返回一个100以内的随机数",
 }

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
@@ -17,7 +18,9 @@ import (
 	"github.com/eastLaugh/web-app-go/go/pkg/adapters"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
 	"github.com/eastLaugh/web-app-go/go/pkg/tools"
+	"github.com/google/uuid"
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -30,18 +33,22 @@ type Server struct {
 	chatModel  string
 	vecAdapter adapters.VecAdapter
 	Tools      *tools.Registry
+	convStore  map[string][]openai.ChatCompletionMessageParamUnion
+	convMu     sync.RWMutex
 }
 
 func NewServer(mg *mongo.Client) *Server {
-	client := openai.NewClient()
+	client := openai.NewClient(
+		option.WithBaseURL(os.Getenv("OPENAI_BASE_URL")),
+		option.WithMiddleware(func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+			// tracer
+			return next(req)
+		}),
+	)
 	chatModel := os.Getenv("OPENAI_MODEL")
-	if chatModel == "" {
-		chatModel = "gpt-4o-mini"
-	}
+
 	embModel := os.Getenv("OPENAI_EMBEDDING_MODEL")
-	if embModel == "" {
-		embModel = "text-embedding-3-small"
-	}
+
 	vecAdapter := adapters.NewMangoVec(mg.Database("webapp").Collection("vector_docs"), &client, embModel)
 
 	s := &Server{
@@ -50,6 +57,7 @@ func NewServer(mg *mongo.Client) *Server {
 		client:     &client,
 		chatModel:  chatModel,
 		vecAdapter: vecAdapter,
+		convStore:  make(map[string][]openai.ChatCompletionMessageParamUnion),
 	}
 	s.Tools = registerChatTools(s)
 	return s
@@ -74,6 +82,16 @@ func (s *Server) PostAuth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]string{"token": token})
+}
+
+func (s *Server) PostConversations(w http.ResponseWriter, r *http.Request) {
+	id := uuid.New().String()
+	s.convMu.Lock()
+	s.convStore[id] = []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(api.GetSystemPrompt())}
+	s.convMu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(api.ConversationCreated{Id: id})
 }
 
 func (s *Server) GetPosts(w http.ResponseWriter, r *http.Request, params api.GetPostsParams) {

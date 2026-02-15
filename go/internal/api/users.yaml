@@ -7,7 +7,6 @@ info:
 
 servers:
   - url: http://localhost:8080/api/v1
-    description: 本地开发服务器
 
 paths:
   # 认证（登录/注册）
@@ -31,11 +30,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
 
+  # 创建对话（后端维护消息，返回 uuid）
+  /conversations:
+    post:
+      summary: 新建对话
+      description: 创建一条新对话，返回 conversation_id，后续发 chat 时带上此 id
+      tags:
+        - 聊天
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationCreated'
+
   # 聊天 API
   /chat:
     post:
       summary: 聊天对话
-      description: 与 AI 进行对话，支持多轮对话和流式输出
+      description: 与 AI 对话，需先 POST /conversations 取得 conversation_id，再带 conversation_id 与 content 请求
       tags:
         - 聊天
       requestBody:
@@ -153,24 +167,24 @@ components:
     ChatRequest:
       type: object
       required:
-        - messages
+        - conversation_id
+        - content
       properties:
-        messages:
-          type: array
-          description: 对话消息列表
-          items:
-            type: object
-            required:
-              - role
-              - content
-            properties:
-              role:
-                type: string
-                enum: [system, user, assistant]
-                description: 消息角色
-              content:
-                type: string
-                description: 消息内容
+        conversation_id:
+          type: string
+          description: 对话 id（由 POST /conversations 返回）
+        content:
+          type: string
+          description: 本条用户消息
+
+    ConversationCreated:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: 对话 uuid
 
     Post:
       type: object

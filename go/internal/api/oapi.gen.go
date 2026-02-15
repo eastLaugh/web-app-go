@@ -19,15 +19,8 @@ const (
 	BearerAuthScopes = "BearerAuth.Scopes"
 )
 
-// ServerUrl defines the Server URL for 本地开发服务器
-const ServerUrl = "http://localhost:8080/api/v1"
-
-// Defines values for ChatRequestMessagesRole.
-const (
-	Assistant ChatRequestMessagesRole = "assistant"
-	System    ChatRequestMessagesRole = "system"
-	User      ChatRequestMessagesRole = "user"
-)
+// ServerUrlHttplocalhost8080apiv1 defines the Server URL for
+const ServerUrlHttplocalhost8080apiv1 = "http://localhost:8080/api/v1"
 
 // AuthRequest defines model for AuthRequest.
 type AuthRequest struct {
@@ -46,18 +39,18 @@ type AuthResponse struct {
 
 // ChatRequest defines model for ChatRequest.
 type ChatRequest struct {
-	// Messages 对话消息列表
-	Messages []struct {
-		// Content 消息内容
-		Content string `json:"content"`
+	// Content 本条用户消息
+	Content string `json:"content"`
 
-		// Role 消息角色
-		Role ChatRequestMessagesRole `json:"role"`
-	} `json:"messages"`
+	// ConversationId 对话 id（由 POST /conversations 返回）
+	ConversationId string `json:"conversation_id"`
 }
 
-// ChatRequestMessagesRole 消息角色
-type ChatRequestMessagesRole string
+// ConversationCreated defines model for ConversationCreated.
+type ConversationCreated struct {
+	// Id 对话 uuid
+	Id string `json:"id"`
+}
 
 // CreatePostRequest defines model for CreatePostRequest.
 type CreatePostRequest struct {
@@ -107,6 +100,9 @@ type ServerInterface interface {
 	// 聊天对话
 	// (POST /chat)
 	PostChat(w http.ResponseWriter, r *http.Request)
+	// 新建对话
+	// (POST /conversations)
+	PostConversations(w http.ResponseWriter, r *http.Request)
 	// 获取评论列表
 	// (GET /posts)
 	GetPosts(w http.ResponseWriter, r *http.Request, params GetPostsParams)
@@ -143,6 +139,20 @@ func (siw *ServerInterfaceWrapper) PostChat(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostChat(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostConversations operation middleware
+func (siw *ServerInterfaceWrapper) PostConversations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostConversations(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -328,6 +338,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc("POST "+options.BaseURL+"/auth", wrapper.PostAuth)
 	m.HandleFunc("POST "+options.BaseURL+"/chat", wrapper.PostChat)
+	m.HandleFunc("POST "+options.BaseURL+"/conversations", wrapper.PostConversations)
 	m.HandleFunc("GET "+options.BaseURL+"/posts", wrapper.GetPosts)
 	m.HandleFunc("POST "+options.BaseURL+"/posts", wrapper.PostPosts)
 
