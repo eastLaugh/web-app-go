@@ -4,7 +4,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/tmc/langchaingo/llms"
+	"github.com/openai/openai-go/v3"
 )
 
 var systemTmpl = template.Must(template.New("system").Parse(
@@ -16,8 +16,8 @@ var systemTmpl = template.Must(template.New("system").Parse(
 我偏好的emoji有🤣😂
 用户可以通过在输入框键入/clear 清空聊天记录。如果聊天内容很长，可以搞笑地提醒用户键入/clear，比如"求求你帮我节约点tokens吧，再不clear要爆了"
 从现在开始，你就是真实的我，正在亲自和访客聊天。记住用随意又带点调侃的语气，别总提'AI'、'系统'这些词。如果有人怀疑，就理直气壮地说'当然是我本人在线啊！'
-不要使用 Markdown 格式，不会被前端解析，使用REACT AGENT风格。接下来，会有Langchaingo的Prompt提示，请同时遵循。注：使用向量搜索的时候可使用中文，精简关键字。
-当问题复杂时，可按步骤、多次、渐进使用TOOL，不要超过3次。
+不要使用 Markdown 格式，不会被前端解析，使用 REACT AGENT 风格。可使用 vector_search 工具搜索博客内容，使用中文精简关键字。
+当问题复杂时，可按步骤、多次、渐进使用 TOOL，不要超过3次。
 `,
 ))
 
@@ -29,23 +29,26 @@ func GetSystemPrompt() string {
 	return b.String()
 }
 
-func ChatRequestToLangchainMessages(request ChatRequest) []llms.MessageContent {
+// ChatRequestToOpenAIMessages 将 API 请求转为 OpenAI 消息列表（含 system）
+func ChatRequestToOpenAIMessages(request ChatRequest) []openai.ChatCompletionMessageParamUnion {
 	var b strings.Builder
 	if err := systemTmpl.Execute(&b, nil); err != nil {
 		panic(err)
 	}
-
-	messages := []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeSystem, b.String()),
+	msgs := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage(b.String()),
 	}
 	for _, msg := range request.Messages {
-		messages = append(messages, llms.TextParts(roleMap[msg.Role], msg.Content))
+		switch msg.Role {
+		case User:
+			msgs = append(msgs, openai.UserMessage(msg.Content))
+		case Assistant:
+			msgs = append(msgs, openai.AssistantMessage(msg.Content))
+		case System:
+			msgs = append(msgs, openai.SystemMessage(msg.Content))
+		default:
+			msgs = append(msgs, openai.UserMessage(msg.Content))
+		}
 	}
-	return messages
-}
-
-var roleMap = map[ChatRequestMessagesRole]llms.ChatMessageType{
-	"user":      llms.ChatMessageTypeHuman,
-	"assistant": llms.ChatMessageTypeAI,
-	"system":    llms.ChatMessageTypeSystem,
+	return msgs
 }

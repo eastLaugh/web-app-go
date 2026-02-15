@@ -1,0 +1,34 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Connect to server",
+      "type": "go",
+      "request": "attach",
+      "mode": "remote",
+      "substitutePath": [
+        { "from": "${workspaceFolder}", "to": "/app" },
+        { "from": "/home/minami/go/pkg", "to": "/go/pkg" }
+      ],
+      "port": 2345,
+      "host": "127.0.0.1"
+    },
+    {
+      "name": "调试服务器",
+      "type": "go",
+      "request": "launch",
+      "program": "${workspaceFolder}/go",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "测试 mongo",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/go",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal"
+    }
+  ]
+}

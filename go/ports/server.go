@@ -8,19 +8,15 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
 	"github.com/eastLaugh/web-app-go/go/internal/repo"
-	util "github.com/eastLaugh/web-app-go/go/pkg"
-	"github.com/eastLaugh/web-app-go/go/pkg/cnllm"
-	"github.com/eastLaugh/web-app-go/go/pkg/cnllm/adapters"
+	"github.com/eastLaugh/web-app-go/go/pkg/adapters"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
-	"github.com/tmc/langchaingo/agents"
-	"github.com/tmc/langchaingo/llms/openai"
-	"github.com/tmc/langchaingo/schema"
-	"github.com/tmc/langchaingo/tools"
+	"github.com/openai/openai-go/v3"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -29,31 +25,30 @@ var _ api.ServerInterface = &Server{}
 type Server struct {
 	postRepo   repo.PostRepo
 	mg         *mongo.Client
-	llm        *openai.LLM
+	client     *openai.Client
+	chatModel  string
 	vecAdapter adapters.VecAdapter
-	agent      agents.Agent
 }
 
-func NewServer(mg *mongo.Client) (server *Server) {
-	llm := util.Must(cnllm.Qwen())
+func NewServer(mg *mongo.Client) *Server {
+	client := openai.NewClient()
+	chatModel := os.Getenv("OPENAI_MODEL")
+	if chatModel == "" {
+		chatModel = "gpt-4o-mini"
+	}
+	embModel := os.Getenv("OPENAI_EMBEDDING_MODEL")
+	if embModel == "" {
+		embModel = "text-embedding-3-small"
+	}
+	vecAdapter := adapters.NewMangoVec(mg.Database("webapp").Collection("vector_docs"), &client, embModel)
 
-	server = &Server{
+	return &Server{
 		postRepo:   repo.NewMangoPostRepo(mg.Database("webapp").Collection("posts")),
 		mg:         mg,
-		llm:        llm,
-		vecAdapter: adapters.NewMangoVec(mg.Database("webapp").Collection("vector_docs"), llm),
-		agent:      nil,
+		client:     &client,
+		chatModel:  chatModel,
+		vecAdapter: vecAdapter,
 	}
-	vs := ToolVectorStore(*server)
-	// server.agent = agents.NewOneShotAgent(llm, []tools.Tool{
-	// 	tools.Calculator{},
-	// 	&vs,
-	// }, agents.WithMaxIterations(10))
-	server.agent = agents.NewConversationalAgent(llm, []tools.Tool{
-		tools.Calculator{},
-		&vs,
-	}, agents.WithMaxIterations(10), agents.WithPromptPrefix(api.GetSystemPrompt()))
-	return
 }
 
 func (s *Server) PostAuth(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +107,6 @@ func (s *Server) PostPosts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) BuildRAGIndex(ctx context.Context, fsys fs.FS) error {
 	log.Printf("开始增量构建 RAG 索引...")
 
-	// 获取已索引的文件
 	indexed, err := s.vecAdapter.GetIndexedFiles(ctx)
 	if err != nil {
 		log.Printf("警告: 获取已索引文件失败: %v", err)
@@ -123,7 +117,7 @@ func (s *Server) BuildRAGIndex(ctx context.Context, fsys fs.FS) error {
 		indexedSet[f] = true
 	}
 
-	var docs []schema.Document
+	var docs []adapters.Document
 	var newFiles []string
 	err = fs.WalkDir(fsys, "blogs", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -144,9 +138,9 @@ func (s *Server) BuildRAGIndex(ctx context.Context, fsys fs.FS) error {
 
 		chunks := processMarkdownCoarse(string(content), path)
 		for _, chunk := range chunks {
-			docs = append(docs, schema.Document{
+			docs = append(docs, adapters.Document{
 				PageContent: chunk.Content,
-				Metadata: map[string]any{
+				Metadata: map[string]interface{}{
 					"file":  chunk.File,
 					"title": chunk.Title,
 				},
@@ -228,28 +222,7 @@ func processMarkdownCoarse(content string, file string) []markdownChunk {
 	return chunks
 }
 
-type ToolVectorStore Server
-
-func (t *ToolVectorStore) Call(ctx context.Context, input string) (string, error) {
-	docs, err := t.vecAdapter.Search(ctx, input, 5)
-	if err != nil {
-		return "", fmt.Errorf("向量搜索失败: %w", err)
-	}
-	if len(docs) == 0 {
-		return "未找到相关文档", nil
-	}
-	return fmt.Sprintf("找到 %d 个相关文档：\n\n%s", len(docs), formatDocs(docs)), nil
-}
-
-func (t *ToolVectorStore) Description() string {
-	return "在博客文档中搜索相关内容，返回最相似的文档片段"
-}
-
-func (t *ToolVectorStore) Name() string {
-	return "vector_search"
-}
-
-func formatDocs(docs []schema.Document) string {
+func formatDocs(docs []adapters.Document) string {
 	var sb strings.Builder
 	for i, doc := range docs {
 		title, _ := doc.Metadata["title"].(string)

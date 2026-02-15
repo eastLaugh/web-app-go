@@ -1,18 +1,31 @@
-//go:build noagent
-
 package ports
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
-	"runtime"
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
-	"github.com/tmc/langchaingo/llms"
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/shared"
 )
+
+const maxToolRounds = 10
+
+var chatTools = []openai.ChatCompletionToolUnionParam{
+	openai.ChatCompletionFunctionTool(shared.FunctionDefinitionParam{
+		Name:        "vector_search",
+		Description: openai.String("在博客文档中搜索相关内容，返回最相似的文档片段。可用中文精简关键字。"),
+		Parameters: openai.FunctionParameters{
+			"type": "object",
+			"properties": map[string]any{
+				"query": map[string]string{"type": "string", "description": "搜索关键词或问题"},
+			},
+			"required": []string{"query"},
+		},
+	}),
+}
 
 func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 	var request api.PostChatJSONRequestBody
@@ -21,52 +34,84 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lastUserMsg := ""
-	for i := len(request.Messages) - 1; i >= 0; i-- {
-		if request.Messages[i].Role == api.User {
-			lastUserMsg = request.Messages[i].Content
-			break
-		}
-	}
-
-	if lastUserMsg != "" {
-		docs, err := s.vecAdapter.Search(r.Context(), lastUserMsg, 5)
-		if err != nil {
-			log.Printf("RAG 检索失败: %v", err)
-			runtime.Breakpoint()
-		} else if len(docs) > 0 {
-			ragCtx := "以下是我博客中的相关内容，你可以参考这些信息来回答用户的问题：\n\n" + formatDocs(docs)
-			request.Messages = append(request.Messages, struct {
-				Content string                      `json:"content"`
-				Role    api.ChatRequestMessagesRole `json:"role"`
-			}{
-				Role: api.System, Content: ragCtx,
-			})
-		}
-	}
-
-	messages := api.ChatRequestToLangchainMessages(request)
+	messages := api.ChatRequestToOpenAIMessages(request)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
-
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		panic("不支持 SSE")
 	}
-	resp, err := s.llm.GenerateContent(r.Context(), messages, llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
-		fmt.Fprintf(w, "data: %s\n\n", chunk)
-		flusher.Flush()
-		return nil
-	}))
 
-	if err != nil {
-		fmt.Fprintf(w, "data: [ERROR]%s\n\n", err.Error())
-		flusher.Flush()
-		return
+	ctx := r.Context()
+	for round := 0; round < maxToolRounds; round++ {
+		params := openai.ChatCompletionNewParams{
+			Messages: messages,
+			Model:    openai.ChatModel(s.chatModel),
+			Tools:    chatTools,
+		}
+
+		completion, err := s.client.Chat.Completions.New(ctx, params)
+		if err != nil {
+			fmt.Fprintf(w, "data: [ERROR]%s\n\n", err.Error())
+			flusher.Flush()
+			return
+		}
+
+		if len(completion.Choices) == 0 {
+			fmt.Fprintf(w, "data: [ERROR]empty choices\n\n")
+			flusher.Flush()
+			return
+		}
+
+		msg := completion.Choices[0].Message
+		messages = append(messages, msg.ToParam())
+
+		if len(msg.ToolCalls) == 0 {
+			// 无 tool call，为最终回复，以 SSE 写出
+			content := msg.Content
+			if content != "" {
+				escaped, _ := json.Marshal(content)
+				fmt.Fprintf(w, "data: %s\n\n", escaped)
+			}
+			flusher.Flush()
+			return
+		}
+
+		// 执行 tool calls，追加 tool 结果到 messages
+		for _, tc := range msg.ToolCalls {
+			var result string
+			switch v := tc.AsAny().(type) {
+			case openai.ChatCompletionMessageFunctionToolCall:
+				if v.Function.Name == "vector_search" {
+					var args struct {
+						Query string `json:"query"`
+					}
+					_ = json.Unmarshal([]byte(v.Function.Arguments), &args)
+					result, _ = s.runVectorSearch(ctx, args.Query)
+				} else {
+					result = "未知工具"
+				}
+			default:
+				result = "不支持的 tool call"
+			}
+			messages = append(messages, openai.ToolMessage(result, tc.ID))
+		}
 	}
 
-	_ = resp
+	fmt.Fprintf(w, "data: [ERROR]超过最大 tool 轮数\n\n")
+	flusher.Flush()
+}
+
+func (s *Server) runVectorSearch(ctx context.Context, query string) (string, error) {
+	docs, err := s.vecAdapter.Search(ctx, query, 5)
+	if err != nil {
+		return "", err
+	}
+	if len(docs) == 0 {
+		return "未找到相关文档", nil
+	}
+	return fmt.Sprintf("找到 %d 个相关文档：\n\n%s", len(docs), formatDocs(docs)), nil
 }
