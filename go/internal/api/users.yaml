@@ -32,11 +32,27 @@ paths:
 
   # 创建对话（后端维护消息，返回 uuid）
   /conversations:
+    get:
+      summary: 获取用户对话列表
+      description: 返回当前用户的 conversation_id 列表
+      tags:
+        - 聊天
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 对话 id 列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationList'
     post:
       summary: 新建对话
       description: 创建一条新对话，返回 conversation_id，后续发 chat 时带上此 id
       tags:
         - 聊天
+      security:
+        - BearerAuth: []
       responses:
         '200':
           description: 创建成功
@@ -45,6 +61,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConversationCreated'
 
+  # 获取指定对话的消息
+  /conversations/{conversation_id}:
+    get:
+      summary: 获取对话消息
+      description: 返回指定对话的历史消息，用于打开已有对话
+      tags:
+        - 聊天
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 消息列表（OpenAI 格式，含 role、content 等）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationMessages'
+        '404':
+          description: 对话不存在或不属于当前用户
+
   # 聊天 API
   /chat:
     post:
@@ -52,6 +93,8 @@ paths:
       description: 与 AI 对话，需先 POST /conversations 取得 conversation_id，再带 conversation_id 与 content 请求
       tags:
         - 聊天
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -185,6 +228,28 @@ components:
         id:
           type: string
           description: 对话 uuid
+
+    ConversationList:
+      type: object
+      required:
+        - ids
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+          description: 对话 id 列表
+        titles:
+          type: object
+          additionalProperties:
+            type: string
+          description: 对话 id 到标题的映射，无标题的对话无此项
+
+    ConversationMessages:
+      type: array
+      description: 消息列表，每项为 OpenAI 消息格式（含 role、content 等）
+      items:
+        type: object
 
     Post:
       type: object

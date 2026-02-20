@@ -20,8 +20,22 @@ func VectorSearch(ctx context.Context, args *struct{ Query string }) string {
 	return s
 }
 
+func SetConversationTitle(ctx context.Context, args *struct{ Title string }) string {
+	srv := ctx.Value(reflect.TypeFor[*Server]()).(*Server)
+	meta, _ := ctx.Value(ConvMetaKey).(*ConvMeta)
+	if meta == nil {
+		return "无法设置标题：上下文无效"
+	}
+	if err := srv.userRepo.SetConversationTitle(ctx, meta.Email, meta.ConversationID, args.Title); err != nil {
+		return err.Error()
+	}
+	return "已设置对话标题"
+}
+
 func registerChatTools(_ *Server) *tools.Registry {
 	return tools.New(
+		SetConversationTitle,
+		"设置当前对话的标题，用于在历史列表中展示。标题应简短，建议不超过20字。",
 		VectorSearch,
 		"在博客文档中搜索相关内容，返回最相似的文档片段。可用中文精简关键字。",
 		Puzzle,

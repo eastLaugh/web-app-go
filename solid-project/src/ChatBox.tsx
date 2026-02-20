@@ -19,8 +19,22 @@ export const collapseChat = () => {
   }
 };
 
+function apiMessagesToMessages(api: Array<Record<string, unknown>>): Message[] {
+  const out: Message[] = [];
+  for (const m of api) {
+    const role = m.role as string;
+    if (role === 'system') continue;
+    const content = (m.content as string) ?? '';
+    const toolCalls = (m.tool_calls as Array<{ function?: { name?: string } }>)?.map((t) => t.function?.name).filter(Boolean) as string[] | undefined;
+    out.push({ role: role as 'user' | 'assistant', content, toolCalls: toolCalls?.length ? toolCalls : undefined });
+  }
+  return out;
+}
+
 const ChatBox: Component = () => {
   const [conversationId, setConversationId] = createSignal<string | null>(null);
+  const [conversationList, setConversationList] = createSignal<string[]>([]);
+  const [conversationTitles, setConversationTitles] = createSignal<Record<string, string>>({});
   const [messages, setMessages] = createSignal<Message[]>([]);
   const [input, setInput] = createSignal('');
   const [isLoading, setIsLoading] = createSignal(false);
@@ -74,23 +88,49 @@ const ChatBox: Component = () => {
     }
   });
 
-  const ensureConversation = async (): Promise<string> => {
-    let id = conversationId();
-    if (id) return id;
-    const res = await fetch('/api/v1/conversations', { method: 'POST' });
-    if (!res.ok) throw new Error('创建对话失败');
-    const data = await res.json();
-    id = data.id;
-    setConversationId(id);
-    return id;
+  const handleNewConversation = () => {
+    setConversationId(null);
+    setMessages([]);
   };
 
-  const handleNewConversation = async () => {
-    const res = await fetch('/api/v1/conversations', { method: 'POST' });
+  const authHeaders = (): Record<string, string> => {
+    const t = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+    return t ? { Authorization: `Bearer ${t}` } : {};
+  };
+
+  const fetchConversationList = async () => {
+    const res = await fetch('/api/v1/conversations', { headers: authHeaders() });
     if (!res.ok) return;
     const data = await res.json();
-    setConversationId(data.id);
-    setMessages([]);
+    setConversationList(Array.isArray(data.ids) ? data.ids : []);
+    setConversationTitles(data.titles && typeof data.titles === 'object' ? data.titles : {});
+  };
+
+  createEffect(() => {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('token')) {
+      fetchConversationList();
+    }
+  });
+
+  const openConversation = async (id: string) => {
+    const res = await fetch(`/api/v1/conversations/${encodeURIComponent(id)}`, { headers: authHeaders() });
+    if (!res.ok) return;
+    const apiMessages = (await res.json()) as Array<Record<string, unknown>>;
+    setConversationId(id);
+    setMessages(apiMessagesToMessages(apiMessages));
+  };
+
+  const ensureConversation = async (): Promise<string> => {
+    const cur = conversationId();
+    if (cur) return cur;
+    const res = await fetch('/api/v1/conversations', { method: 'POST', headers: authHeaders() });
+    if (!res.ok) throw new Error('创建对话失败');
+    const data = await res.json();
+    const id = data.id as string;
+    setConversationId(id);
+    setConversationList((prev) => [id, ...prev]);
+    fetchConversationList();
+    return id;
   };
 
   const sendMessage = async () => {
@@ -109,7 +149,7 @@ const ChatBox: Component = () => {
       const convId = await ensureConversation();
       const response = await fetch('/api/v1/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ conversation_id: convId, content: text }),
       });
 
@@ -169,6 +209,7 @@ const ChatBox: Component = () => {
         setCurrentContent('');
       }
       setIsLoading(false);
+      fetchConversationList();
     } catch (error) {
       console.error('发送消息失败:', error);
       setMessages(prev => [...prev, { role: 'assistant', content: '抱歉，发送消息失败，请稍后重试。' }]);
@@ -182,13 +223,6 @@ const ChatBox: Component = () => {
   const handleKeyPress = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      const text = input().trim();
-      if (text === '/clear') {
-        setMessages([]);
-        setInput('');
-        setConversationId(null);
-        return;
-      }
       sendMessage();
     }
   };
@@ -262,9 +296,22 @@ const ChatBox: Component = () => {
         </div>
       ) : null}
       <div class="chat-input-container" ref={inputContainer} onClick={handleInputClick}>
-        <button type="button" class="chat-new-conversation" onClick={(e) => { e.stopPropagation(); handleNewConversation(); }} title="新建对话">
-          新建对话
-        </button>
+        <select
+          class="chat-history-select"
+          value={conversationId() ?? ''}
+          onChange={(e) => {
+            const id = e.currentTarget.value;
+            if (id) openConversation(id);
+            else handleNewConversation();
+          }}
+          onClick={(e) => e.stopPropagation()}
+          title="新建会话"
+        >
+          <option value="">历史会话</option>
+            <For each={conversationList()}>
+              {(id) => <option value={id}>{conversationTitles()[id] || `${id.slice(0, 8)}…`}</option>}
+            </For>
+        </select>
         <textarea
           class="chat-input"
           value={input()}

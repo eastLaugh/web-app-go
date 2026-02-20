@@ -9,26 +9,44 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/eastLaugh/web-app-go/go/internal/api"
+	"github.com/google/uuid"
 	"github.com/openai/openai-go/v3"
 )
 
 const maxToolRounds = 10
 
+// ConvMeta 注入到 context，供 set_conversation_title 等 tool 获取当前对话与用户
+type ConvMeta struct {
+	Email            string
+	ConversationID   string
+}
+type convMetaKey struct{}
+var ConvMetaKey convMetaKey
+
 func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
+	email, _ := r.Context().Value("email").(string)
+	if email == "" {
+		http.Error(w, "未授权", http.StatusUnauthorized)
+		return
+	}
 	var request api.PostChatJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
 	if request.ConversationId == "" {
 		http.Error(w, "conversation_id required", http.StatusBadRequest)
 		return
 	}
-	s.convMu.RLock()
-	hist := s.convStore[request.ConversationId]
-	s.convMu.RUnlock()
-
+	raw, err := s.userRepo.GetConversation(r.Context(), email, request.ConversationId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var hist []openai.ChatCompletionMessageParamUnion
+	if raw != "" {
+		_ = json.Unmarshal([]byte(raw), &hist)
+	}
 	var messages []openai.ChatCompletionMessageParamUnion
 	if len(hist) == 0 {
 		messages = []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(api.GetSystemPrompt()), openai.UserMessage(request.Content)}
@@ -46,6 +64,7 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.WithValue(r.Context(), reflect.TypeFor[*Server](), s)
+	ctx = context.WithValue(ctx, ConvMetaKey, &ConvMeta{Email: email, ConversationID: request.ConversationId})
 	for range maxToolRounds {
 		params := openai.ChatCompletionNewParams{
 			Messages: messages,
@@ -80,11 +99,10 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 		msg := acc.Choices[0].Message
 		messages = append(messages, msg.ToParam())
 
-		// no tool call, save and return
 		if len(msg.ToolCalls) == 0 {
-			s.convMu.Lock()
-			s.convStore[request.ConversationId] = messages
-			s.convMu.Unlock()
+			if b, _ := json.Marshal(messages); b != nil {
+				_ = s.userRepo.SetConversation(r.Context(), email, request.ConversationId, string(b))
+			}
 			flusher.Flush()
 			return
 		}
@@ -113,10 +131,9 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-
-	s.convMu.Lock()
-	s.convStore[request.ConversationId] = messages
-	s.convMu.Unlock()
+	if b, _ := json.Marshal(messages); b != nil {
+		_ = s.userRepo.SetConversation(r.Context(), email, request.ConversationId, string(b))
+	}
 	fmt.Fprintf(w, "data: [ERROR]超过最大 tool 轮数\n\n")
 	flusher.Flush()
 }
@@ -132,6 +149,7 @@ func (s *Server) runVectorSearch(ctx context.Context, query string) (string, err
 	return fmt.Sprintf("找到 %d 个相关文档：\n\n%s", len(docs), formatDocs(docs)), nil
 }
 
+// TODO
 func (s *Server) PostChatWebsocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
@@ -139,4 +157,77 @@ func (s *Server) PostChatWebsocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "websocket accepted")
 
+}
+
+func (s *Server) PostConversations(w http.ResponseWriter, r *http.Request) {
+	email, _ := r.Context().Value("email").(string)
+	if email == "" {
+		http.Error(w, "未授权", http.StatusUnauthorized)
+		return
+	}
+	id := uuid.New().String()
+	initial := []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(api.GetSystemPrompt())}
+	b, _ := json.Marshal(initial)
+	if err := s.userRepo.AddConversation(r.Context(), email, id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := s.userRepo.SetConversation(r.Context(), email, id, string(b)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(api.ConversationCreated{Id: id})
+}
+
+func (s *Server) GetConversations(w http.ResponseWriter, r *http.Request) {
+	email, _ := r.Context().Value("email").(string)
+	if email == "" {
+		http.Error(w, "未授权", http.StatusUnauthorized)
+		return
+	}
+	u, err := s.userRepo.GetByEmail(r.Context(), email)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ids := []string(nil)
+	var titles *map[string]string
+	if u != nil {
+		if len(u.ConversationIDs) > 0 {
+			ids = u.ConversationIDs
+		}
+		if len(u.ConversationTitles) > 0 {
+			titles = &u.ConversationTitles
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(api.ConversationList{Ids: ids, Titles: titles})
+}
+
+func (s *Server) GetConversationsConversationId(w http.ResponseWriter, r *http.Request, conversationId string) {
+	email, _ := r.Context().Value("email").(string)
+	if email == "" {
+		http.Error(w, "未授权", http.StatusUnauthorized)
+		return
+	}
+	raw, err := s.userRepo.GetConversation(r.Context(), email, conversationId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if raw == "" {
+		http.Error(w, "对话不存在", http.StatusNotFound)
+		return
+	}
+	var messages api.ConversationMessages
+	if err := json.Unmarshal([]byte(raw), &messages); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(messages)
 }

@@ -52,6 +52,18 @@ type ConversationCreated struct {
 	Id string `json:"id"`
 }
 
+// ConversationList defines model for ConversationList.
+type ConversationList struct {
+	// Ids 对话 id 列表
+	Ids []string `json:"ids"`
+
+	// Titles 对话 id 到标题的映射，无标题的对话无此项
+	Titles *map[string]string `json:"titles,omitempty"`
+}
+
+// ConversationMessages 消息列表，每项为 OpenAI 消息格式（含 role、content 等）
+type ConversationMessages = []map[string]interface{}
+
 // CreatePostRequest defines model for CreatePostRequest.
 type CreatePostRequest struct {
 	// Content 评论内容
@@ -100,9 +112,15 @@ type ServerInterface interface {
 	// 聊天对话
 	// (POST /chat)
 	PostChat(w http.ResponseWriter, r *http.Request)
+	// 获取用户对话列表
+	// (GET /conversations)
+	GetConversations(w http.ResponseWriter, r *http.Request)
 	// 新建对话
 	// (POST /conversations)
 	PostConversations(w http.ResponseWriter, r *http.Request)
+	// 获取对话消息
+	// (GET /conversations/{conversation_id})
+	GetConversationsConversationId(w http.ResponseWriter, r *http.Request, conversationId string)
 	// 获取评论列表
 	// (GET /posts)
 	GetPosts(w http.ResponseWriter, r *http.Request, params GetPostsParams)
@@ -137,8 +155,34 @@ func (siw *ServerInterfaceWrapper) PostAuth(w http.ResponseWriter, r *http.Reque
 // PostChat operation middleware
 func (siw *ServerInterfaceWrapper) PostChat(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostChat(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetConversations operation middleware
+func (siw *ServerInterfaceWrapper) GetConversations(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetConversations(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -151,8 +195,45 @@ func (siw *ServerInterfaceWrapper) PostChat(w http.ResponseWriter, r *http.Reque
 // PostConversations operation middleware
 func (siw *ServerInterfaceWrapper) PostConversations(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostConversations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetConversationsConversationId operation middleware
+func (siw *ServerInterfaceWrapper) GetConversationsConversationId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "conversation_id" -------------
+	var conversationId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "conversation_id", r.PathValue("conversation_id"), &conversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "conversation_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetConversationsConversationId(w, r, conversationId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -338,7 +419,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc("POST "+options.BaseURL+"/auth", wrapper.PostAuth)
 	m.HandleFunc("POST "+options.BaseURL+"/chat", wrapper.PostChat)
+	m.HandleFunc("GET "+options.BaseURL+"/conversations", wrapper.GetConversations)
 	m.HandleFunc("POST "+options.BaseURL+"/conversations", wrapper.PostConversations)
+	m.HandleFunc("GET "+options.BaseURL+"/conversations/{conversation_id}", wrapper.GetConversationsConversationId)
 	m.HandleFunc("GET "+options.BaseURL+"/posts", wrapper.GetPosts)
 	m.HandleFunc("POST "+options.BaseURL+"/posts", wrapper.PostPosts)
 
