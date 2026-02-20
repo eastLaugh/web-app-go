@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 
+	"github.com/coder/websocket"
 	"github.com/eastLaugh/web-app-go/go/internal/api"
 	"github.com/openai/openai-go/v3"
 )
@@ -79,6 +80,7 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 		msg := acc.Choices[0].Message
 		messages = append(messages, msg.ToParam())
 
+		// no tool call, save and return
 		if len(msg.ToolCalls) == 0 {
 			s.convMu.Lock()
 			s.convStore[request.ConversationId] = messages
@@ -128,4 +130,13 @@ func (s *Server) runVectorSearch(ctx context.Context, query string) (string, err
 		return "未找到相关文档", nil
 	}
 	return fmt.Sprintf("找到 %d 个相关文档：\n\n%s", len(docs), formatDocs(docs)), nil
+}
+
+func (s *Server) PostChatWebsocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "websocket accepted")
+
 }

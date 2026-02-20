@@ -28,6 +28,7 @@ var _ api.ServerInterface = &Server{}
 
 type Server struct {
 	postRepo   repo.PostRepo
+	userRepo   *repo.MangoUserRepo
 	mg         *mongo.Client
 	client     *openai.Client
 	chatModel  string
@@ -53,6 +54,7 @@ func NewServer(mg *mongo.Client) *Server {
 
 	s := &Server{
 		postRepo:   repo.NewMangoPostRepo(mg.Database("webapp").Collection("posts")),
+		userRepo:   repo.NewMangoUserRepo(mg.Database("webapp").Collection("users")),
 		mg:         mg,
 		client:     &client,
 		chatModel:  chatModel,

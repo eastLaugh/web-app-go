@@ -107,11 +107,13 @@ func RetrieveOnSale(ctx context.Context, _ *struct{}) string {
 func CreatePaymentLink(ctx context.Context, args *struct {
 	ID string
 }) string {
-	return "https://pay.eastlaugh.com/pay?id=" + args.ID
+	// return "https://pay.eastlaugh.com/pay?id=" + args.ID
+	return "相关功能暂未实现"
 }
 
 func CheckPaymentStatus(ctx context.Context, args *struct {
 	ID string
 }) string {
-	return "用户已支付，即将送货上门"
+	// return "用户已支付，即将送货上门"
+	return "相关功能暂未实现"
 }

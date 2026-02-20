@@ -28,6 +28,8 @@ var dist embed.FS
 func init() {
 	_ = godotenv.Load()
 	slog.SetDefault(slog.New(tint.NewHandler(os.Stdout, nil)))
+
+	mongoClient = initMongo()
 }
 
 func main() {
@@ -47,8 +49,8 @@ var consoleTmpl = template.Must(template.ParseFS(consoleTemplate, "template/*"))
 var serverChan chan *ports.Server = make(chan *ports.Server, 1)
 
 func Serve(fsys fs.FS) {
-	mg := initMongo()
-	server := ports.NewServer(mg)
+
+	server := ports.NewServer(mongoClient)
 	serverChan <- server
 
 	mux := http.NewServeMux()
@@ -57,7 +59,7 @@ func Serve(fsys fs.FS) {
 		Middlewares: []api.MiddlewareFunc{tokens.Middleware},
 	})))
 
-	ankiApp := ports.NewAnki(server, fsys, mg.Database("webapp").Collection("anki"))
+	ankiApp := ports.NewAnki(server, fsys, mongoClient.Database("webapp").Collection("anki"))
 	mux.Handle("/api/anki/v1/", http.StripPrefix("/api/anki/v1", anki_api.HandlerWithOptions(ankiApp, anki_api.StdHTTPServerOptions{
 		Middlewares: []anki_api.MiddlewareFunc{ports.AnkiMiddleware, tokens.Middleware},
 	})))
@@ -93,10 +95,12 @@ func recoveryMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+var mongoClient *mongo.Client
+
 func initMongo() *mongo.Client {
 	var uri string
 	if uri = os.Getenv("EASTLAUGH_MONGODB_URI"); uri == "" {
-		log.Fatal("未设置 EASTLAUGH_MONGODB_URI 环境变量")
+		panic("empty EASTLAUGH_MONGODB_URI")
 	}
 	// Uses the SetServerAPIOptions() method to set the Stable API version to 1
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
@@ -113,6 +117,5 @@ func initMongo() *mongo.Client {
 		panic(err)
 	}
 
-	// log.Printf("MongoDB 连接成功")
 	return client
 }
