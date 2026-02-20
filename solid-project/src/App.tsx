@@ -1,31 +1,9 @@
 import type { Component } from 'solid-js';
-import { createSignal, createEffect, onCleanup } from 'solid-js';
+import { createSignal, createEffect } from 'solid-js';
 import { marked } from 'marked';
-import { login, createPost, getPosts, getNextCard, submitReview } from './api';
+import { login, createPost, getPosts } from './api';
 import ChatBox, { collapseChat } from './ChatBox';
-import { AnkiStub } from './anki/Anki';
 import './App.css';
-
-const AnkiBar: Component<{ onDone: (elapsed: number) => void }> = (props) => {
-  const [elapsed, setElapsed] = createSignal(0);
-
-  const timer = setInterval(() => setElapsed(e => e + 1), 1000);
-  onCleanup(() => clearInterval(timer));
-
-  return (
-    <div class="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-[600px] px-5 z-50">
-      <div class="flex items-center gap-4 bg-white border border-black px-5 py-3 shadow-lg">
-        <span class="text-sm text-gray-500 font-mono">{elapsed()}s</span>
-        <button
-          class="flex-1 py-3 border border-black bg-black text-white text-base cursor-pointer"
-          onClick={() => props.onDone(elapsed())}
-        >
-          我已学会
-        </button>
-      </div>
-    </div>
-  );
-};
 
 const Good: Component<{ title: string; url: string; description?: string }> = (props) => (
   <div class="post-item">
@@ -56,8 +34,8 @@ const Post: Component<{ file: string; title: string; time?: string }> = (props) 
 
 const App: Component = () => {
   const hash = window.location.hash.slice(1);
-  const [currentPage, setCurrentPage] = createSignal(hash === 'anki' ? 'anki' : hash.startsWith('goods') ? 'goods' : 'blog');
-  const [currentFile, setCurrentFile] = createSignal(hash === 'anki' || hash.startsWith('goods') ? '' : hash);
+  const [currentPage, setCurrentPage] = createSignal(hash.startsWith('goods') ? 'goods' : 'blog');
+  const [currentFile, setCurrentFile] = createSignal(hash.startsWith('goods') ? '' : hash);
   const [htmlContent, setHtmlContent] = createSignal('');
   const [token, setToken] = createSignal(localStorage.getItem('token') || '');
   const [email, setEmail] = createSignal('');
@@ -115,8 +93,8 @@ const App: Component = () => {
 
   window.addEventListener('hashchange', () => {
     const hash = window.location.hash.slice(1);
-    setCurrentPage(hash === 'anki' ? 'anki' : hash.startsWith('goods') ? 'goods' : 'blog');
-    setCurrentFile(hash === 'anki' || hash.startsWith('goods') ? '' : hash);
+    setCurrentPage(hash.startsWith('goods') ? 'goods' : 'blog');
+    setCurrentFile(hash.startsWith('goods') ? '' : hash);
   });
 
   return (
@@ -129,16 +107,6 @@ const App: Component = () => {
             </h1>
             <h1 onClick={() => { window.location.hash = 'goods'; setCurrentPage('goods'); }} class={`cursor-pointer ${currentPage() === 'goods' ? 'opacity-100' : 'opacity-50'}`}>
               Goods
-            </h1>
-            <h1
-              onClick={() => {
-                window.location.hash = 'anki';
-                setCurrentPage('anki');
-                setCurrentFile('');
-              }}
-              class={`cursor-pointer ${currentPage() === 'anki' ? 'opacity-100' : 'opacity-50'}`}
-            >
-              Anki
             </h1>
           </div>
           {token() ? (
@@ -175,9 +143,7 @@ const App: Component = () => {
             </div>
           </div>
         )}
-        {currentPage() === 'anki' ? (
-          <AnkiStub />
-        ) : currentPage() === 'goods' ? (
+        {currentPage() === 'goods' ? (
           <div class="post-list">
             <Good title="示例链接" url="https://example.com" description="这是一个示例链接" />
             <Good title="Go Green Tea GC" url="https://tonybai.com/2025/10/31/deep-into-go-green-tea-gc/" description="垃圾回收器：从 DFS 到 BFS" />
@@ -276,28 +242,6 @@ const App: Component = () => {
       <div class="mt-10 text-center text-xs pb-[100px]">
         <a href="mailto:east_laugh@qq.com" class="text-black no-underline">east_laugh@qq.com</a>
       </div>
-      {currentFile().startsWith('blogs/anki/') && (
-        <AnkiBar onDone={async (elapsed) => {
-          const file = currentFile();
-          const t = token();
-          if (!t) {
-            alert('请先登录');
-            return;
-          }
-          try {
-            await submitReview(t, file, elapsed);
-            const nextFile = await getNextCard(t);
-            if (!nextFile) {
-              alert('没有更多卡片了');
-              window.location.hash = 'anki';
-              return;
-            }
-            window.location.hash = nextFile;
-          } catch (e) {
-            alert('操作失败');
-          }
-        }} />
-      )}
       <ChatBox />
     </div>
   );

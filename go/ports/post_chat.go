@@ -9,6 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/eastLaugh/web-app-go/go/internal/api"
+	"github.com/eastLaugh/web-app-go/go/internal/prompt"
 	"github.com/google/uuid"
 	"github.com/openai/openai-go/v3"
 )
@@ -17,10 +18,11 @@ const maxToolRounds = 10
 
 // ConvMeta 注入到 context，供 set_conversation_title 等 tool 获取当前对话与用户
 type ConvMeta struct {
-	Email            string
-	ConversationID   string
+	Email          string
+	ConversationID string
 }
 type convMetaKey struct{}
+
 var ConvMetaKey convMetaKey
 
 func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
@@ -44,12 +46,11 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var hist []openai.ChatCompletionMessageParamUnion
-	if raw != "" {
-		_ = json.Unmarshal([]byte(raw), &hist)
-	}
+	json.Unmarshal([]byte(raw), &hist)
 	var messages []openai.ChatCompletionMessageParamUnion
 	if len(hist) == 0 {
-		messages = []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(api.GetSystemPrompt()), openai.UserMessage(request.Content)}
+		panic("conversation not found")
+		// messages = []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(prompt.GetSystemPrompt()), openai.UserMessage(request.Content)}
 	} else {
 		messages = append(hist, openai.UserMessage(request.Content))
 	}
@@ -166,7 +167,7 @@ func (s *Server) PostConversations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := uuid.New().String()
-	initial := []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(api.GetSystemPrompt())}
+	initial := []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(prompt.GetSystemPrompt(email))}
 	b, _ := json.Marshal(initial)
 	if err := s.userRepo.AddConversation(r.Context(), email, id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
-	anki_api "github.com/eastLaugh/web-app-go/go/internal/api/anki"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
 	"github.com/eastLaugh/web-app-go/go/ports"
 	"github.com/joho/godotenv"
@@ -57,11 +56,6 @@ func Serve(fsys fs.FS) {
 
 	mux.Handle("/api/v1/", http.StripPrefix("/api/v1", api.HandlerWithOptions(server, api.StdHTTPServerOptions{
 		Middlewares: []api.MiddlewareFunc{tokens.Middleware},
-	})))
-
-	ankiApp := ports.NewAnki(server, fsys, mongoClient.Database("webapp").Collection("anki"))
-	mux.Handle("/api/anki/v1/", http.StripPrefix("/api/anki/v1", anki_api.HandlerWithOptions(ankiApp, anki_api.StdHTTPServerOptions{
-		Middlewares: []anki_api.MiddlewareFunc{ports.AnkiMiddleware, tokens.Middleware},
 	})))
 
 	// 文件服务器

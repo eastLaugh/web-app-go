@@ -1,9 +1,0 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/HEAD/configuration-schema.json
-package: anki_api
-output: "oapi.gen.go"
-generate:
-  std-http-server: true
-  models: true
-  # server-urls: true
-  # embedded-spec: true
-  # strict-server: true

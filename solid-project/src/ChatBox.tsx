@@ -184,11 +184,25 @@ const ChatBox: Component = () => {
                 const parsed = JSON.parse(text);
                 if (parsed && parsed.event === 'tool_call' && Array.isArray(parsed.tools)) {
                   setCallingTools(parsed.tools);
-                  setToolsCalledInReply(prev => [...prev, ...parsed.tools]);
                 } else if (typeof parsed === 'string') {
+                  setToolsCalledInReply(prev => {
+                    const cur = callingTools();
+                    if (!cur?.length) return prev;
+                    const next = new Set(prev);
+                    cur.forEach((t: string) => next.add(t));
+                    return [...next];
+                  });
                   setCallingTools(null);
                   setCurrentContent(prev => prev + parsed);
                 } else {
+                  setToolsCalledInReply(prev => {
+                    const cur = callingTools();
+                    if (!cur?.length) return prev;
+                    const next = new Set(prev);
+                    cur.forEach((t: string) => next.add(t));
+                    return [...next];
+                  });
+                  setCallingTools(null);
                   setCurrentContent(prev => prev + String(parsed));
                 }
               } catch {
@@ -200,9 +214,16 @@ const ChatBox: Component = () => {
         }
       }
 
+      const curCalling = callingTools();
+      setToolsCalledInReply(prev => {
+        if (!curCalling?.length) return prev;
+        const next = new Set(prev);
+        curCalling.forEach((t) => next.add(t));
+        return [...next];
+      });
+      setCallingTools(null);
       const finalContent = currentContent();
       const toolsCalled = toolsCalledInReply();
-      setCallingTools(null);
       setToolsCalledInReply([]);
       if (finalContent || toolsCalled.length > 0) {
         setMessages(prev => [...prev, { role: 'assistant', content: finalContent, toolCalls: toolsCalled.length > 0 ? toolsCalled : undefined }]);
