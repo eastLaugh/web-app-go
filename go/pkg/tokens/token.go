@@ -8,12 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/eastLaugh/web-app-go/go/internal/api"
 )
 
 var tokenPwd = os.Getenv("EASTLAUGH_TOKEN_PWD")
@@ -64,40 +63,49 @@ func (t *Payload) Import(token string) error {
 	return json.Unmarshal(payload, t)
 }
 
-// Middleware 返回一个标准库风格的中间件
+func clientIP(r *http.Request) string {
+	if x := r.Header.Get("X-Forwarded-For"); x != "" {
+		if i := strings.Index(x, ","); i >= 0 {
+			x = strings.TrimSpace(x[:i])
+		} else {
+			x = strings.TrimSpace(x)
+		}
+		if x != "" {
+			return x
+		}
+	}
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if host != "" {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+// RequireAuth 从 ctx 取 email，非登录用户（guest 或类型异常）直接 panic。
+func RequireAuth(ctx context.Context) string {
+	email := ctx.Value("email").(string)
+	if strings.HasPrefix(email, "guest:") {
+		panic("tokens: guest not allowed")
+	}
+	return email
+}
+
+// Middleware 只写 context：有有效 token 设 email，无/无效设 "guest:"+IP，一定 next。
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 检查是否需要认证
-		scopes := r.Context().Value(api.BearerAuthScopes)
-		if scopes == nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		token := r.Header.Get("Authorization")
-		if token == "" {
-			http.Error(w, "未授权", http.StatusUnauthorized)
-			return
-		}
-		token = strings.TrimPrefix(token, "Bearer ")
-		if token == "" {
-			http.Error(w, "未授权", http.StatusUnauthorized)
-			return
-		}
-		var payload Payload
-		err := payload.Import(token)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
-		if payload.Expire < time.Now().Unix() {
-			http.Error(w, "token 已过期", http.StatusUnauthorized)
-			return
-		}
-
-		// 直接替换上下文
 		ctx := r.Context()
-		ctx = context.WithValue(ctx, "email", payload.Email)
+		email := "guest:" + clientIP(r)
+		token := r.Header.Get("Authorization")
+		if token != "" {
+			token = strings.TrimPrefix(token, "Bearer ")
+			if token != "" {
+				var payload Payload
+				if payload.Import(token) == nil && payload.Expire >= time.Now().Unix() {
+					email = payload.Email
+				}
+			}
+		}
+		ctx = context.WithValue(ctx, "email", email)
 		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)
 	})

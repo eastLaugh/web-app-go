@@ -7,11 +7,26 @@
       "request": "attach",
       "mode": "remote",
       "substitutePath": [
-        { "from": "${workspaceFolder}", "to": "/app" },
-        { "from": "/home/minami/go/pkg", "to": "/go/pkg" }
+        {
+          "from": "${workspaceFolder}",
+          "to": "/app"
+        },
+        {
+          "from": "/home/minami/go/pkg",
+          "to": "/go/pkg"
+        }
       ],
       "port": 2345,
       "host": "127.0.0.1"
+    },
+    {
+      "name": "Launch Main",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/go/",
+      "envFile": "${workspaceFolder}/.env",
+      "preLaunchTask": "npm: build - solid-project"
     }
   ]
 }

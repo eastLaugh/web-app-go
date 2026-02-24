@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"reflect"
+	"strings"
 
 	"github.com/coder/websocket"
 	"github.com/eastLaugh/web-app-go/go/internal/api"
@@ -16,21 +16,17 @@ import (
 
 const maxToolRounds = 10
 
-// ConvMeta 注入到 context，供 set_conversation_title 等 tool 获取当前对话与用户
+// ConvMeta 是 Agent 调用工具的上下文
 type ConvMeta struct {
 	Email          string
 	ConversationID string
+	Server         *Server
 }
-type convMetaKey struct{}
 
-var ConvMetaKey convMetaKey
+type ConvMetaKey struct{}
 
 func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 	email, _ := r.Context().Value("email").(string)
-	if email == "" {
-		http.Error(w, "未授权", http.StatusUnauthorized)
-		return
-	}
 	var request api.PostChatJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -50,10 +46,8 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 	var messages []openai.ChatCompletionMessageParamUnion
 	if len(hist) == 0 {
 		panic("conversation not found")
-		// messages = []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(prompt.GetSystemPrompt()), openai.UserMessage(request.Content)}
-	} else {
-		messages = append(hist, openai.UserMessage(request.Content))
 	}
+	messages = append(hist, openai.UserMessage(request.Content))
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -64,8 +58,8 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 		panic("not support SSE")
 	}
 
-	ctx := context.WithValue(r.Context(), reflect.TypeFor[*Server](), s)
-	ctx = context.WithValue(ctx, ConvMetaKey, &ConvMeta{Email: email, ConversationID: request.ConversationId})
+	ctx := r.Context()
+	ctx = context.WithValue(ctx, ConvMetaKey{}, &ConvMeta{Email: email, ConversationID: request.ConversationId, Server: s})
 	for range maxToolRounds {
 		params := openai.ChatCompletionNewParams{
 			Messages: messages,
@@ -102,7 +96,7 @@ func (s *Server) PostChat(w http.ResponseWriter, r *http.Request) {
 
 		if len(msg.ToolCalls) == 0 {
 			if b, _ := json.Marshal(messages); b != nil {
-				_ = s.userRepo.SetConversation(r.Context(), email, request.ConversationId, string(b))
+				_ = s.userRepo.SetConversation(ctx, email, request.ConversationId, string(b))
 			}
 			flusher.Flush()
 			return
@@ -162,10 +156,6 @@ func (s *Server) PostChatWebsocket(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) PostConversations(w http.ResponseWriter, r *http.Request) {
 	email, _ := r.Context().Value("email").(string)
-	if email == "" {
-		http.Error(w, "未授权", http.StatusUnauthorized)
-		return
-	}
 	id := uuid.New().String()
 	initial := []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(prompt.GetSystemPrompt(email))}
 	b, _ := json.Marshal(initial)
@@ -184,8 +174,10 @@ func (s *Server) PostConversations(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) GetConversations(w http.ResponseWriter, r *http.Request) {
 	email, _ := r.Context().Value("email").(string)
-	if email == "" {
-		http.Error(w, "未授权", http.StatusUnauthorized)
+	if strings.HasPrefix(email, "guest:") {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(api.ConversationList{Ids: nil, Titles: nil})
 		return
 	}
 	u, err := s.userRepo.GetByEmail(r.Context(), email)
@@ -210,8 +202,8 @@ func (s *Server) GetConversations(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) GetConversationsConversationId(w http.ResponseWriter, r *http.Request, conversationId string) {
 	email, _ := r.Context().Value("email").(string)
-	if email == "" {
-		http.Error(w, "未授权", http.StatusUnauthorized)
+	if strings.HasPrefix(email, "guest:") {
+		http.Error(w, "对话不存在", http.StatusNotFound)
 		return
 	}
 	raw, err := s.userRepo.GetConversation(r.Context(), email, conversationId)

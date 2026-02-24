@@ -5,15 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
-	"reflect"
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/pkg/tools"
 )
 
 func vector_search(ctx context.Context, args *struct{ Query string }) string {
-	srv := ctx.Value(reflect.TypeFor[*Server]()).(*Server)
-	s, err := srv.runVectorSearch(ctx, args.Query)
+	meta := ctx.Value(ConvMetaKey{}).(*ConvMeta)
+	s, err := meta.Server.runVectorSearch(ctx, args.Query)
 	if err != nil {
 		return err.Error()
 	}
@@ -21,12 +20,8 @@ func vector_search(ctx context.Context, args *struct{ Query string }) string {
 }
 
 func set_conversation_title(ctx context.Context, args *struct{ Title string }) string {
-	srv := ctx.Value(reflect.TypeFor[*Server]()).(*Server)
-	meta, _ := ctx.Value(ConvMetaKey).(*ConvMeta)
-	if meta == nil {
-		return "无法设置标题：上下文无效"
-	}
-	if err := srv.userRepo.SetConversationTitle(ctx, meta.Email, meta.ConversationID, args.Title); err != nil {
+	meta := ctx.Value(ConvMetaKey{}).(*ConvMeta)
+	if err := meta.Server.userRepo.SetConversationTitle(ctx, meta.Email, meta.ConversationID, args.Title); err != nil {
 		return err.Error()
 	}
 	return "已设置对话标题"
@@ -59,6 +54,8 @@ func registerChatTools(_ *Server) *tools.Registry {
 		"检查支付状态",
 		tools.Fetch_web_page,
 		"",
+		Send_email,
+		"SMTP 发送邮件",
 	)
 }
 
@@ -132,4 +129,22 @@ func check_payment_status(ctx context.Context, args *struct {
 }) string {
 	// return "用户已支付，即将送货上门"
 	return "相关功能暂未实现"
+}
+
+func Send_email(ctx context.Context, args *struct {
+	To      string `description:"收件人邮箱地址"`
+	Subject string `description:"邮件主题"`
+	Body    string `description:"邮件内容"`
+}) string {
+
+	meta := ctx.Value(ConvMetaKey{}).(*ConvMeta)
+	if args.To != meta.Email && args.To != "east_laugh@qq.com" {
+		return "无法发送邮件：只允许发送给用户或 east_laugh@qq.com\n如果用户为访客，无法发送给用户，请引导用户通过邮箱登录"
+	}
+
+	err := tools.SendMail(args.Subject, args.Body, args.To)
+	if err != nil {
+		return err.Error()
+	}
+	return "邮件发送成功"
 }

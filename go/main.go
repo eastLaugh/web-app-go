@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
+	"github.com/eastLaugh/web-app-go/go/pkg/ratelimit"
 	"github.com/eastLaugh/web-app-go/go/pkg/tokens"
 	"github.com/eastLaugh/web-app-go/go/ports"
 	"github.com/joho/godotenv"
@@ -49,7 +50,7 @@ func Serve(fsys fs.FS) {
 	mux := http.NewServeMux()
 
 	mux.Handle("/api/v1/", http.StripPrefix("/api/v1", api.HandlerWithOptions(server, api.StdHTTPServerOptions{
-		Middlewares: []api.MiddlewareFunc{tokens.Middleware},
+		Middlewares: []api.MiddlewareFunc{tokens.Middleware, ratelimit.Middleware},
 	})))
 
 	// 文件服务器

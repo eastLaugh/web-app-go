@@ -93,6 +93,8 @@ const ChatBox: Component = () => {
     setMessages([]);
   };
 
+  const hasToken = (): boolean => typeof localStorage !== 'undefined' && !!localStorage.getItem('token');
+
   const authHeaders = (): Record<string, string> => {
     const t = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
     return t ? { Authorization: `Bearer ${t}` } : {};
@@ -317,31 +319,36 @@ const ChatBox: Component = () => {
         </div>
       ) : null}
       <div class="chat-input-container" ref={inputContainer} onClick={handleInputClick}>
-        <select
-          class="chat-history-select"
-          value={conversationId() ?? ''}
-          onChange={(e) => {
-            const id = e.currentTarget.value;
-            if (id) openConversation(id);
-            else handleNewConversation();
-          }}
-          onClick={(e) => e.stopPropagation()}
-          title="新建会话"
-        >
-          <option value="">历史会话</option>
+        {!hasToken() && (
+          <div class="chat-guest-tip">访客模式，登录后可保存对话历史</div>
+        )}
+        <div class="chat-input-row">
+          <select
+            class="chat-history-select"
+            value={conversationId() ?? ''}
+            onChange={(e) => {
+              const id = e.currentTarget.value;
+              if (id) openConversation(id);
+              else handleNewConversation();
+            }}
+            onClick={(e) => e.stopPropagation()}
+            title="新建会话"
+          >
+            <option value="">历史会话</option>
             <For each={conversationList()}>
               {(id) => <option value={id}>{conversationTitles()[id] || `${id.slice(0, 8)}…`}</option>}
             </For>
-        </select>
-        <textarea
-          class="chat-input"
-          value={input()}
-          onInput={(e) => setInput(e.currentTarget.value)}
-          onKeyPress={handleKeyPress}
-          placeholder={isCollapsed() ? '点击输入框展开聊天' : '按 Enter 与"我"聊天'}
-          disabled={isLoading()}
-          rows={1}
-        />
+          </select>
+          <textarea
+            class="chat-input"
+            value={input()}
+            onInput={(e) => setInput(e.currentTarget.value)}
+            onKeyPress={handleKeyPress}
+            placeholder={isCollapsed() ? '点击输入框展开聊天' : '按 Enter 与"我"聊天'}
+            disabled={isLoading()}
+            rows={1}
+          />
+        </div>
       </div>
     </div>
   );

@@ -93,12 +93,7 @@ func (s *Server) GetPosts(w http.ResponseWriter, r *http.Request, params api.Get
 }
 
 func (s *Server) PostPosts(w http.ResponseWriter, r *http.Request) {
-	email, ok := r.Context().Value("email").(string)
-	if !ok {
-		http.Error(w, "未授权", http.StatusUnauthorized)
-		return
-	}
-
+	email := tokens.RequireAuth(r.Context())
 	req := new(api.PostPostsJSONRequestBody)
 	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
