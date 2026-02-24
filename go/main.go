@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"embed"
-	"html/template"
 	"io/fs"
 	"log"
 	"log/slog"
@@ -41,16 +40,11 @@ func main() {
 	select {}
 }
 
-//go:embed template/*
-var consoleTemplate embed.FS
-var consoleTmpl = template.Must(template.ParseFS(consoleTemplate, "template/*"))
-
-var serverChan chan *ports.Server = make(chan *ports.Server, 1)
+var server *ports.Server
 
 func Serve(fsys fs.FS) {
 
-	server := ports.NewServer(mongoClient)
-	serverChan <- server
+	server = ports.NewServer(mongoClient)
 
 	mux := http.NewServeMux()
 
@@ -61,6 +55,10 @@ func Serve(fsys fs.FS) {
 	// 文件服务器
 	mux.Handle("/app/", http.StripPrefix("/app/", http.FileServer(http.FS(fsys))))
 	mux.Handle("/", http.RedirectHandler("/app/", http.StatusTemporaryRedirect))
+	mux.Handle("/ping", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("pong"))
+	}))
 
 	handler := loggingMiddleware(recoveryMiddleware(mux))
 

@@ -11,7 +11,7 @@ import (
 	"github.com/eastLaugh/web-app-go/go/pkg/tools"
 )
 
-func VectorSearch(ctx context.Context, args *struct{ Query string }) string {
+func vector_search(ctx context.Context, args *struct{ Query string }) string {
 	srv := ctx.Value(reflect.TypeFor[*Server]()).(*Server)
 	s, err := srv.runVectorSearch(ctx, args.Query)
 	if err != nil {
@@ -20,7 +20,7 @@ func VectorSearch(ctx context.Context, args *struct{ Query string }) string {
 	return s
 }
 
-func SetConversationTitle(ctx context.Context, args *struct{ Title string }) string {
+func set_conversation_title(ctx context.Context, args *struct{ Title string }) string {
 	srv := ctx.Value(reflect.TypeFor[*Server]()).(*Server)
 	meta, _ := ctx.Value(ConvMetaKey).(*ConvMeta)
 	if meta == nil {
@@ -34,41 +34,43 @@ func SetConversationTitle(ctx context.Context, args *struct{ Title string }) str
 
 func registerChatTools(_ *Server) *tools.Registry {
 	return tools.New(
-		SetConversationTitle,
+		set_conversation_title,
 		"设置当前对话的标题，用于在历史列表中展示。标题应简短，建议不超过20字。",
-		VectorSearch,
+		vector_search,
 		"在博客文档中搜索相关内容，返回最相似的文档片段。可用中文精简关键字。",
-		Puzzle,
+		puzzle,
 		"猜数字（1～100），报 Guess，返回猜大了/猜小了/猜中。assistant 和 user 均可以玩游戏。assistant 作为玩家时，需要多次调用此工具，并无需等待 user 回复。",
-		Echo,
+		echo,
 		"原样返回用户给的文本，用于测试",
-		Now,
+		now,
 		"返回当前服务器时间，无参数",
-		Add,
+		add,
 		"把两个整数相加，返回和",
 		func(ctx context.Context, _ *struct{}) string {
 			time.Sleep(time.Second * 10)
 			return "睡眠10秒完成"
 		},
 		"睡眠10秒",
-		RetrieveOnSale,
+		retrieve_on_sale,
 		"返回在售商品列表",
-		CreatePaymentLink,
+		create_payment_link,
 		"创建支付链接",
-		CheckPaymentStatus,
+		check_payment_status,
 		"检查支付状态",
+		tools.Fetch_web_page,
+		"",
 	)
 }
 
-func Echo(ctx context.Context, args *struct{ Text string }) string {
+func echo(ctx context.Context, args *struct{ Text string }) string {
 	return args.Text
 }
 
-func Now(ctx context.Context, args *struct{}) string {
+func now(ctx context.Context, args *struct{}) string {
 	return time.Now().Format(time.RFC3339)
 }
 
-func Add(ctx context.Context, args *struct {
+func add(ctx context.Context, args *struct {
 	A int
 	B int
 }) string {
@@ -77,7 +79,7 @@ func Add(ctx context.Context, args *struct {
 
 var answer = rand.N(100)
 
-func Puzzle(ctx context.Context, args *struct {
+func puzzle(ctx context.Context, args *struct {
 	Guess int
 }) string {
 	if args.Guess > answer {
@@ -95,7 +97,7 @@ type Product struct {
 	Price int
 }
 
-func RetrieveOnSale(ctx context.Context, _ *struct{}) string {
+func retrieve_on_sale(ctx context.Context, _ *struct{}) string {
 	var products []any
 
 	products = append(products, Product{
@@ -118,14 +120,14 @@ func RetrieveOnSale(ctx context.Context, _ *struct{}) string {
 	return string(body)
 }
 
-func CreatePaymentLink(ctx context.Context, args *struct {
+func create_payment_link(ctx context.Context, args *struct {
 	ID string
 }) string {
 	// return "https://pay.eastlaugh.com/pay?id=" + args.ID
 	return "相关功能暂未实现"
 }
 
-func CheckPaymentStatus(ctx context.Context, args *struct {
+func check_payment_status(ctx context.Context, args *struct {
 	ID string
 }) string {
 	// return "用户已支付，即将送货上门"

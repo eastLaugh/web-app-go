@@ -5,3 +5,4 @@ generate:
   std-http-server: true
   models: true
   server-urls: true
+  client: true

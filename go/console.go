@@ -1,16 +1,21 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
+	"html/template"
 	"io/fs"
 	"net"
 	"net/http"
 	"os"
 )
 
+//go:embed template/*
+var consoleTemplate embed.FS
+var consoleTmpl = template.Must(template.ParseFS(consoleTemplate, "template/*"))
+
 func ServeConsole(fsys fs.FS) {
 	mux := http.NewServeMux()
-	server := <-serverChan
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		consoleTmpl.Execute(w, nil)
 	})

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
 	"reflect"
 	"runtime"
 	"time"
@@ -142,11 +141,4 @@ func onion(next handler) handler {
 
 func base(fn reflect.Value, ctx context.Context, ptr reflect.Value) string {
 	return fn.Call([]reflect.Value{reflect.ValueOf(ctx), ptr})[0].String()
-}
-
-var DefaultTools = []any{
-	func(ctx context.Context, _ *struct{}) string {
-		return fmt.Sprintf("%d", rand.N(100))
-	},
-	"返回一个100以内的随机数",
 }
