@@ -2,14 +2,17 @@ package ports
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/eastLaugh/web-app-go/go/internal/api"
@@ -60,10 +63,55 @@ func NewServer(mg *mongo.Client) *Server {
 	return s
 }
 
+var codeStore sync.Map // email -> codeEntry
+
+type codeEntry struct {
+	Code   string
+	Expire time.Time
+}
+
+func (s *Server) PostAuthCode(w http.ResponseWriter, r *http.Request) {
+	var req api.PostAuthCodeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	n, _ := rand.Int(rand.Reader, big.NewInt(1000000))
+	code := fmt.Sprintf("%06d", n.Int64())
+
+	codeStore.Store(string(req.Email), codeEntry{Code: code, Expire: time.Now().Add(5 * time.Minute)})
+
+	if err := tools.SendMail("验证码", "你的验证码是: "+code+"，5 分钟内有效。", string(req.Email)); err != nil {
+		slog.Error("发送验证码失败", "email", req.Email, "err", err)
+		http.Error(w, "发送验证码失败", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("验证码已发送", "email", req.Email)
+	w.WriteHeader(http.StatusOK)
+}
+
 func (s *Server) PostAuth(w http.ResponseWriter, r *http.Request) {
 	var request api.PostAuthJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	v, ok := codeStore.LoadAndDelete(string(request.Email))
+	if !ok {
+		http.Error(w, "请先发送验证码", http.StatusBadRequest)
+		return
+	}
+	entry := v.(codeEntry)
+	if time.Now().After(entry.Expire) {
+		http.Error(w, "验证码已过期", http.StatusBadRequest)
+		return
+	}
+	if entry.Code != request.Code {
+		codeStore.Store(string(request.Email), entry)
+		http.Error(w, "验证码错误", http.StatusBadRequest)
 		return
 	}
 

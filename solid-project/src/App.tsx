@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js';
 import { createSignal, createEffect } from 'solid-js';
 import { marked } from 'marked';
-import { login, createPost, getPosts } from './api';
+import { sendCode, login, createPost, getPosts } from './api';
 import ChatBox, { collapseChat } from './ChatBox';
 import './App.css';
 
@@ -39,6 +39,8 @@ const App: Component = () => {
   const [htmlContent, setHtmlContent] = createSignal('');
   const [token, setToken] = createSignal(localStorage.getItem('token') || '');
   const [email, setEmail] = createSignal('');
+  const [code, setCode] = createSignal('');
+  const [codeSent, setCodeSent] = createSignal(false);
   const [showLogin, setShowLogin] = createSignal(false);
   const [comments, setComments] = createSignal<any[]>([]);
   const [commentText, setCommentText] = createSignal('');
@@ -67,15 +69,27 @@ const App: Component = () => {
     setComments(cmts);
   });
 
-  const handleLogin = async () => {
+  const handleSendCode = async () => {
     if (!email()) return;
     try {
-      const t = await login(email());
+      await sendCode(email());
+      setCodeSent(true);
+    } catch (e: any) {
+      alert(e.message || '发送验证码失败');
+    }
+  };
+
+  const handleLogin = async () => {
+    if (!email() || !code()) return;
+    try {
+      const t = await login(email(), code());
       setToken(t);
       localStorage.setItem('token', t);
       setShowLogin(false);
-    } catch (e) {
-      alert('登录失败');
+      setCodeSent(false);
+      setCode('');
+    } catch (e: any) {
+      alert(e.message || '登录失败');
     }
   };
 
@@ -204,7 +218,7 @@ const App: Component = () => {
         )}
       </main>
       {showLogin() && (
-        <div class="login-modal" onClick={() => setShowLogin(false)}>
+        <div class="login-modal" onClick={() => { setShowLogin(false); setCodeSent(false); setCode(''); }}>
           <div
             class="login-box"
             style={`transform-origin: ${clickPos().x}px ${clickPos().y}px;`}
@@ -217,20 +231,38 @@ const App: Component = () => {
               onInput={(e) => setEmail(e.currentTarget.value)}
               placeholder="邮箱"
               class="w-full p-2 border border-black text-[13px] mb-2.5"
-              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+              disabled={codeSent()}
+              onKeyPress={(e) => e.key === 'Enter' && !codeSent() && handleSendCode()}
             />
-            <div class="text-[11px] text-gray-500 mb-4">
-              验证码功能暂未启用，任意邮箱可登录
-            </div>
+            {codeSent() && (
+              <input
+                type="text"
+                value={code()}
+                onInput={(e) => setCode(e.currentTarget.value)}
+                placeholder="验证码"
+                class="w-full p-2 border border-black text-[13px] mb-2.5"
+                maxLength={6}
+                onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+              />
+            )}
             <div class="flex gap-2.5">
+              {codeSent() ? (
+                <button
+                  onClick={handleLogin}
+                  class="flex-1 p-2 border border-black bg-black text-white cursor-pointer text-[13px]"
+                >
+                  登录
+                </button>
+              ) : (
+                <button
+                  onClick={handleSendCode}
+                  class="flex-1 p-2 border border-black bg-black text-white cursor-pointer text-[13px]"
+                >
+                  发送验证码
+                </button>
+              )}
               <button
-                onClick={handleLogin}
-                class="flex-1 p-2 border border-black bg-black text-white cursor-pointer text-[13px]"
-              >
-                登录
-              </button>
-              <button
-                onClick={() => setShowLogin(false)}
+                onClick={() => { setShowLogin(false); setCodeSent(false); setCode(''); }}
                 class="flex-1 p-2 border border-black bg-white cursor-pointer text-[13px]"
               >
                 取消
@@ -240,7 +272,7 @@ const App: Component = () => {
         </div>
       )}
       <div class="mt-10 text-center text-xs pb-[100px]">
-        <a href="mailto:east_laugh@qq.com" class="text-black no-underline">east_laugh@qq.com</a>
+        <a href="mailto:[REDACTED]" class="text-black no-underline">[REDACTED]</a>
       </div>
       <ChatBox />
     </div>

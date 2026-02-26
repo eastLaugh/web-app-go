@@ -9,6 +9,23 @@ servers:
   - url: http://localhost:8080/api/v1
 
 paths:
+  # 发送验证码
+  /auth/code:
+    post:
+      summary: 发送邮箱验证码
+      description: 向指定邮箱发送 6 位验证码，5 分钟有效
+      tags:
+        - 认证
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendCodeRequest'
+      responses:
+        '200':
+          description: 验证码已发送
+
   # 认证（登录/注册）
   /auth:
     post:
@@ -168,6 +185,17 @@ components:
       scheme: bearer
 
   schemas:
+    SendCodeRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          description: 邮箱
+          example: "user@example.com"
+
     AuthRequest:
       type: object
       required:

@@ -6,9 +6,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/oapi-codegen/runtime"
@@ -89,6 +94,12 @@ type Post struct {
 	Id   *string `json:"id,omitempty"`
 }
 
+// SendCodeRequest defines model for SendCodeRequest.
+type SendCodeRequest struct {
+	// Email 邮箱
+	Email openapi_types.Email `json:"email"`
+}
+
 // GetPostsParams defines parameters for GetPosts.
 type GetPostsParams struct {
 	// File 博客文件名，如 blogs/post.md
@@ -98,17 +109,1114 @@ type GetPostsParams struct {
 // PostAuthJSONRequestBody defines body for PostAuth for application/json ContentType.
 type PostAuthJSONRequestBody = AuthRequest
 
+// PostAuthCodeJSONRequestBody defines body for PostAuthCode for application/json ContentType.
+type PostAuthCodeJSONRequestBody = SendCodeRequest
+
 // PostChatJSONRequestBody defines body for PostChat for application/json ContentType.
 type PostChatJSONRequestBody = ChatRequest
 
 // PostPostsJSONRequestBody defines body for PostPosts for application/json ContentType.
 type PostPostsJSONRequestBody = CreatePostRequest
 
+// RequestEditorFn  is the function signature for the RequestEditor callback function
+type RequestEditorFn func(ctx context.Context, req *http.Request) error
+
+// Doer performs HTTP requests.
+//
+// The standard http.Client implements this interface.
+type HttpRequestDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+// Client which conforms to the OpenAPI3 specification for this service.
+type Client struct {
+	// The endpoint of the server conforming to this interface, with scheme,
+	// https://api.deepmap.com for example. This can contain a path relative
+	// to the server, such as https://api.deepmap.com/dev-test, and all the
+	// paths in the swagger spec will be appended to the server.
+	Server string
+
+	// Doer for performing requests, typically a *http.Client with any
+	// customized settings, such as certificate chains.
+	Client HttpRequestDoer
+
+	// A list of callbacks for modifying requests which are generated before sending over
+	// the network.
+	RequestEditors []RequestEditorFn
+}
+
+// ClientOption allows setting custom parameters during construction
+type ClientOption func(*Client) error
+
+// Creates a new Client, with reasonable defaults
+func NewClient(server string, opts ...ClientOption) (*Client, error) {
+	// create a client with sane default values
+	client := Client{
+		Server: server,
+	}
+	// mutate client and add all optional params
+	for _, o := range opts {
+		if err := o(&client); err != nil {
+			return nil, err
+		}
+	}
+	// ensure the server URL always has a trailing slash
+	if !strings.HasSuffix(client.Server, "/") {
+		client.Server += "/"
+	}
+	// create httpClient, if not already present
+	if client.Client == nil {
+		client.Client = &http.Client{}
+	}
+	return &client, nil
+}
+
+// WithHTTPClient allows overriding the default Doer, which is
+// automatically created using http.Client. This is useful for tests.
+func WithHTTPClient(doer HttpRequestDoer) ClientOption {
+	return func(c *Client) error {
+		c.Client = doer
+		return nil
+	}
+}
+
+// WithRequestEditorFn allows setting up a callback function, which will be
+// called right before sending the request. This can be used to mutate the request.
+func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
+	return func(c *Client) error {
+		c.RequestEditors = append(c.RequestEditors, fn)
+		return nil
+	}
+}
+
+// The interface specification for the client above.
+type ClientInterface interface {
+	// PostAuthWithBody request with any body
+	PostAuthWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostAuth(ctx context.Context, body PostAuthJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostAuthCodeWithBody request with any body
+	PostAuthCodeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostAuthCode(ctx context.Context, body PostAuthCodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostChatWithBody request with any body
+	PostChatWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostChat(ctx context.Context, body PostChatJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetConversations request
+	GetConversations(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostConversations request
+	PostConversations(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetConversationsConversationId request
+	GetConversationsConversationId(ctx context.Context, conversationId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPosts request
+	GetPosts(ctx context.Context, params *GetPostsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostPostsWithBody request with any body
+	PostPostsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostPosts(ctx context.Context, body PostPostsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+func (c *Client) PostAuthWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostAuthRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostAuth(ctx context.Context, body PostAuthJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostAuthRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostAuthCodeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostAuthCodeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostAuthCode(ctx context.Context, body PostAuthCodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostAuthCodeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostChatWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostChatRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostChat(ctx context.Context, body PostChatJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostChatRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetConversations(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetConversationsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostConversations(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostConversationsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetConversationsConversationId(ctx context.Context, conversationId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetConversationsConversationIdRequest(c.Server, conversationId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetPosts(ctx context.Context, params *GetPostsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPostsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostPostsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostPostsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostPosts(ctx context.Context, body PostPostsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostPostsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// NewPostAuthRequest calls the generic PostAuth builder with application/json body
+func NewPostAuthRequest(server string, body PostAuthJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostAuthRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostAuthRequestWithBody generates requests for PostAuth with any type of body
+func NewPostAuthRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPostAuthCodeRequest calls the generic PostAuthCode builder with application/json body
+func NewPostAuthCodeRequest(server string, body PostAuthCodeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostAuthCodeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostAuthCodeRequestWithBody generates requests for PostAuthCode with any type of body
+func NewPostAuthCodeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/code")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPostChatRequest calls the generic PostChat builder with application/json body
+func NewPostChatRequest(server string, body PostChatJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostChatRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostChatRequestWithBody generates requests for PostChat with any type of body
+func NewPostChatRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/chat")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetConversationsRequest generates requests for GetConversations
+func NewGetConversationsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/conversations")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostConversationsRequest generates requests for PostConversations
+func NewPostConversationsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/conversations")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetConversationsConversationIdRequest generates requests for GetConversationsConversationId
+func NewGetConversationsConversationIdRequest(server string, conversationId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "conversation_id", runtime.ParamLocationPath, conversationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/conversations/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetPostsRequest generates requests for GetPosts
+func NewGetPostsRequest(server string, params *GetPostsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/posts")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "file", runtime.ParamLocationQuery, params.File); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostPostsRequest calls the generic PostPosts builder with application/json body
+func NewPostPostsRequest(server string, body PostPostsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostPostsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostPostsRequestWithBody generates requests for PostPosts with any type of body
+func NewPostPostsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/posts")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
+	for _, r := range c.RequestEditors {
+		if err := r(ctx, req); err != nil {
+			return err
+		}
+	}
+	for _, r := range additionalEditors {
+		if err := r(ctx, req); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ClientWithResponses builds on ClientInterface to offer response payloads
+type ClientWithResponses struct {
+	ClientInterface
+}
+
+// NewClientWithResponses creates a new ClientWithResponses, which wraps
+// Client with return type handling
+func NewClientWithResponses(server string, opts ...ClientOption) (*ClientWithResponses, error) {
+	client, err := NewClient(server, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &ClientWithResponses{client}, nil
+}
+
+// WithBaseURL overrides the baseURL.
+func WithBaseURL(baseURL string) ClientOption {
+	return func(c *Client) error {
+		newBaseURL, err := url.Parse(baseURL)
+		if err != nil {
+			return err
+		}
+		c.Server = newBaseURL.String()
+		return nil
+	}
+}
+
+// ClientWithResponsesInterface is the interface specification for the client with responses above.
+type ClientWithResponsesInterface interface {
+	// PostAuthWithBodyWithResponse request with any body
+	PostAuthWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAuthResponse, error)
+
+	PostAuthWithResponse(ctx context.Context, body PostAuthJSONRequestBody, reqEditors ...RequestEditorFn) (*PostAuthResponse, error)
+
+	// PostAuthCodeWithBodyWithResponse request with any body
+	PostAuthCodeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAuthCodeResponse, error)
+
+	PostAuthCodeWithResponse(ctx context.Context, body PostAuthCodeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostAuthCodeResponse, error)
+
+	// PostChatWithBodyWithResponse request with any body
+	PostChatWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostChatResponse, error)
+
+	PostChatWithResponse(ctx context.Context, body PostChatJSONRequestBody, reqEditors ...RequestEditorFn) (*PostChatResponse, error)
+
+	// GetConversationsWithResponse request
+	GetConversationsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetConversationsResponse, error)
+
+	// PostConversationsWithResponse request
+	PostConversationsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostConversationsResponse, error)
+
+	// GetConversationsConversationIdWithResponse request
+	GetConversationsConversationIdWithResponse(ctx context.Context, conversationId string, reqEditors ...RequestEditorFn) (*GetConversationsConversationIdResponse, error)
+
+	// GetPostsWithResponse request
+	GetPostsWithResponse(ctx context.Context, params *GetPostsParams, reqEditors ...RequestEditorFn) (*GetPostsResponse, error)
+
+	// PostPostsWithBodyWithResponse request with any body
+	PostPostsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostPostsResponse, error)
+
+	PostPostsWithResponse(ctx context.Context, body PostPostsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostPostsResponse, error)
+}
+
+type PostAuthResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AuthResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r PostAuthResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostAuthResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostAuthCodeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r PostAuthCodeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostAuthCodeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostChatResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r PostChatResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostChatResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetConversationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ConversationList
+}
+
+// Status returns HTTPResponse.Status
+func (r GetConversationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetConversationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostConversationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ConversationCreated
+}
+
+// Status returns HTTPResponse.Status
+func (r PostConversationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostConversationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetConversationsConversationIdResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ConversationMessages
+}
+
+// Status returns HTTPResponse.Status
+func (r GetConversationsConversationIdResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetConversationsConversationIdResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetPostsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]Post
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPostsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPostsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostPostsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Id      *int    `json:"id,omitempty"`
+		Message *string `json:"message,omitempty"`
+	}
+}
+
+// Status returns HTTPResponse.Status
+func (r PostPostsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostPostsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// PostAuthWithBodyWithResponse request with arbitrary body returning *PostAuthResponse
+func (c *ClientWithResponses) PostAuthWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAuthResponse, error) {
+	rsp, err := c.PostAuthWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostAuthResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostAuthWithResponse(ctx context.Context, body PostAuthJSONRequestBody, reqEditors ...RequestEditorFn) (*PostAuthResponse, error) {
+	rsp, err := c.PostAuth(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostAuthResponse(rsp)
+}
+
+// PostAuthCodeWithBodyWithResponse request with arbitrary body returning *PostAuthCodeResponse
+func (c *ClientWithResponses) PostAuthCodeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAuthCodeResponse, error) {
+	rsp, err := c.PostAuthCodeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostAuthCodeResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostAuthCodeWithResponse(ctx context.Context, body PostAuthCodeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostAuthCodeResponse, error) {
+	rsp, err := c.PostAuthCode(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostAuthCodeResponse(rsp)
+}
+
+// PostChatWithBodyWithResponse request with arbitrary body returning *PostChatResponse
+func (c *ClientWithResponses) PostChatWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostChatResponse, error) {
+	rsp, err := c.PostChatWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostChatResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostChatWithResponse(ctx context.Context, body PostChatJSONRequestBody, reqEditors ...RequestEditorFn) (*PostChatResponse, error) {
+	rsp, err := c.PostChat(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostChatResponse(rsp)
+}
+
+// GetConversationsWithResponse request returning *GetConversationsResponse
+func (c *ClientWithResponses) GetConversationsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetConversationsResponse, error) {
+	rsp, err := c.GetConversations(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetConversationsResponse(rsp)
+}
+
+// PostConversationsWithResponse request returning *PostConversationsResponse
+func (c *ClientWithResponses) PostConversationsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostConversationsResponse, error) {
+	rsp, err := c.PostConversations(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostConversationsResponse(rsp)
+}
+
+// GetConversationsConversationIdWithResponse request returning *GetConversationsConversationIdResponse
+func (c *ClientWithResponses) GetConversationsConversationIdWithResponse(ctx context.Context, conversationId string, reqEditors ...RequestEditorFn) (*GetConversationsConversationIdResponse, error) {
+	rsp, err := c.GetConversationsConversationId(ctx, conversationId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetConversationsConversationIdResponse(rsp)
+}
+
+// GetPostsWithResponse request returning *GetPostsResponse
+func (c *ClientWithResponses) GetPostsWithResponse(ctx context.Context, params *GetPostsParams, reqEditors ...RequestEditorFn) (*GetPostsResponse, error) {
+	rsp, err := c.GetPosts(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPostsResponse(rsp)
+}
+
+// PostPostsWithBodyWithResponse request with arbitrary body returning *PostPostsResponse
+func (c *ClientWithResponses) PostPostsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostPostsResponse, error) {
+	rsp, err := c.PostPostsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostPostsResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostPostsWithResponse(ctx context.Context, body PostPostsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostPostsResponse, error) {
+	rsp, err := c.PostPosts(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostPostsResponse(rsp)
+}
+
+// ParsePostAuthResponse parses an HTTP response from a PostAuthWithResponse call
+func ParsePostAuthResponse(rsp *http.Response) (*PostAuthResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostAuthResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuthResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostAuthCodeResponse parses an HTTP response from a PostAuthCodeWithResponse call
+func ParsePostAuthCodeResponse(rsp *http.Response) (*PostAuthCodeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostAuthCodeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParsePostChatResponse parses an HTTP response from a PostChatWithResponse call
+func ParsePostChatResponse(rsp *http.Response) (*PostChatResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostChatResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseGetConversationsResponse parses an HTTP response from a GetConversationsWithResponse call
+func ParseGetConversationsResponse(rsp *http.Response) (*GetConversationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetConversationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ConversationList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostConversationsResponse parses an HTTP response from a PostConversationsWithResponse call
+func ParsePostConversationsResponse(rsp *http.Response) (*PostConversationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostConversationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ConversationCreated
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetConversationsConversationIdResponse parses an HTTP response from a GetConversationsConversationIdWithResponse call
+func ParseGetConversationsConversationIdResponse(rsp *http.Response) (*GetConversationsConversationIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetConversationsConversationIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ConversationMessages
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPostsResponse parses an HTTP response from a GetPostsWithResponse call
+func ParseGetPostsResponse(rsp *http.Response) (*GetPostsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPostsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Post
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostPostsResponse parses an HTTP response from a PostPostsWithResponse call
+func ParsePostPostsResponse(rsp *http.Response) (*PostPostsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostPostsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Id      *int    `json:"id,omitempty"`
+			Message *string `json:"message,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// 邮箱验证码认证
 	// (POST /auth)
 	PostAuth(w http.ResponseWriter, r *http.Request)
+	// 发送邮箱验证码
+	// (POST /auth/code)
+	PostAuthCode(w http.ResponseWriter, r *http.Request)
 	// 聊天对话
 	// (POST /chat)
 	PostChat(w http.ResponseWriter, r *http.Request)
@@ -143,6 +1251,20 @@ func (siw *ServerInterfaceWrapper) PostAuth(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostAuth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthCode operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthCode(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthCode(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -418,6 +1540,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc("POST "+options.BaseURL+"/auth", wrapper.PostAuth)
+	m.HandleFunc("POST "+options.BaseURL+"/auth/code", wrapper.PostAuthCode)
 	m.HandleFunc("POST "+options.BaseURL+"/chat", wrapper.PostChat)
 	m.HandleFunc("GET "+options.BaseURL+"/conversations", wrapper.GetConversations)
 	m.HandleFunc("POST "+options.BaseURL+"/conversations", wrapper.PostConversations)
