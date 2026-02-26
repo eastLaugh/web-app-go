@@ -28,3 +28,34 @@
 
 4. **同步配置**  
    若新 API 依赖环境变量，在 `.env.example` 中补充说明。
+
+## Cursor Cloud specific instructions
+
+### Architecture
+
+Single Go binary (`go/`) serves the SolidJS frontend (`solid-project/`) via `//go:embed dist/*`. The frontend must be built before the backend compiles. MongoDB is the only required external service.
+
+### Running locally
+
+1. **MongoDB**: `sudo docker start mongo` (container already exists) or `sudo docker run -d --name mongo -p 27017:27017 mongo:latest`
+2. **Frontend build**: `cd solid-project && npm run build` (outputs to `go/dist/`)
+3. **Backend build + run**: `cd go && go build -o ../server_binary . && cd .. && ./server_binary`
+4. App at `http://localhost:8080/app/`, console at `:2333`
+
+The `.env` at repo root is read by `godotenv`. Minimum required vars: `EASTLAUGH_MONGODB_URI`, `EASTLAUGH_ADDR`, `EASTLAUGH_TOKEN_PWD`. See `.env.example`.
+
+### Lint / Test / Build
+
+| What | Command |
+|------|---------|
+| Go vet | `cd go && go vet ./...` |
+| TypeScript check | `cd solid-project && npx tsc --noEmit` |
+| Go tests | `cd go && go test ./...` |
+| Build all | `make` (or manually: npm build then go build) |
+
+### Gotchas
+
+- Go 1.26.0 is required (`go.mod` specifies it). The default system Go may be older; ensure `/usr/local/go/bin` is on `PATH`.
+- The Go binary embeds `go/dist/` at compile time. If `go/dist/` doesn't exist (frontend not built), the Go build fails.
+- AI chat features require `OPENAI_API_KEY` and related env vars; without them the blog and comments still work but chat returns errors.
+- Docker daemon in the Cloud VM needs `fuse-overlayfs` storage driver and `iptables-legacy`; these are configured during initial setup.
