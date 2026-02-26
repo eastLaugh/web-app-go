@@ -80,13 +80,13 @@ func (s *Server) PostAuthCode(w http.ResponseWriter, r *http.Request) {
 	n, _ := rand.Int(rand.Reader, big.NewInt(1000000))
 	code := fmt.Sprintf("%06d", n.Int64())
 
-	codeStore.Store(string(req.Email), codeEntry{Code: code, Expire: time.Now().Add(5 * time.Minute)})
-
 	if err := tools.SendMail("验证码", "你的验证码是: "+code+"，5 分钟内有效。", string(req.Email)); err != nil {
 		slog.Error("发送验证码失败", "email", req.Email, "err", err)
 		http.Error(w, "发送验证码失败", http.StatusInternalServerError)
 		return
 	}
+
+	codeStore.Store(string(req.Email), codeEntry{Code: code, Expire: time.Now().Add(5 * time.Minute)})
 
 	slog.Info("验证码已发送", "email", req.Email)
 	w.WriteHeader(http.StatusOK)
