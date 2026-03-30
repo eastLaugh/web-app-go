@@ -87,12 +87,31 @@ func schemaFromStruct(t reflect.Type) map[string]any {
 		if f.Tag.Get("json") != "" {
 			panic("tools: don't use json tag")
 		}
-		m[f.Name] = map[string]any{
-			"type":        jsonType(f.Type),
-			"description": f.Tag.Get("description"),
-		}
+		m[f.Name] = schemaForType(f.Type, f.Tag.Get("description"))
 	}
 	return m
+}
+
+func schemaForType(t reflect.Type, desc string) map[string]any {
+	if t.Kind() == reflect.Slice {
+		elem := t.Elem()
+		if elem.Kind() == reflect.Struct {
+			return map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "object", "properties": schemaFromStruct(elem)},
+				"description": desc,
+			}
+		}
+		return map[string]any{
+			"type":        "array",
+			"items":       map[string]any{"type": jsonType(elem)},
+			"description": desc,
+		}
+	}
+	return map[string]any{
+		"type":        jsonType(t),
+		"description": desc,
+	}
 }
 
 func jsonType(t reflect.Type) string {
@@ -107,7 +126,7 @@ func jsonType(t reflect.Type) string {
 	case reflect.Bool:
 		return "boolean"
 	default:
-		return "string"
+		panic("tools: unsupported type: " + t.String())
 	}
 }
 
@@ -128,11 +147,13 @@ func (r *Registry) Execute(ctx context.Context, name string, argumentsJSON strin
 
 type handler func(reflect.Value, context.Context, reflect.Value) string
 
+var Logger = slog.Default()
+
 func onion(next handler) handler {
 	return func(fn reflect.Value, ctx context.Context, ptr reflect.Value) (result string) {
-		slog.Info("工具执行中", "tool", fn.String(), "args", ptr.Interface())
+		Logger.Info("工具执行中", "tool", fn.String(), "args", ptr.Interface())
 		defer func(t time.Time) {
-			slog.Info("工具执行完毕", "result", result, "duration", time.Since(t))
+			Logger.Info("工具执行完毕", "result", result, "duration", time.Since(t))
 		}(time.Now())
 		result = next(fn, ctx, ptr)
 		return
