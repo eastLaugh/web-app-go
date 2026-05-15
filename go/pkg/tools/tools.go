@@ -6,12 +6,43 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"regexp"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/shared"
 )
+
+// NameTransformer 把 runtime.FuncForPC().Name() 的原始结果（如
+// "github.com/eastLaugh/web-app-go/go/ports.vector_search"）变换为对外暴露的工具名。
+// 默认绑 StripPackagePath（DeepSeek 兼容）。如果想回到完整路径名（OpenAI 不强校验，
+// 早期实现），改 NameStrategy = IdentityName 即可。
+type NameTransformer func(rawName string) string
+
+// IdentityName 原样返回，等价于变轨前的行为。
+func IdentityName(s string) string { return s }
+
+// StripPackagePath 截掉最后一个 "." 之前的所有内容，并校验残余字符是否落在
+// ^[a-zA-Z0-9_-]+$ 之内（DeepSeek 服务端硬约束）。
+// 命中不合规则 panic，强制开发者把函数名改成 ASCII 友好形态；
+// 如未来需要支持中文 / 方法接收器等非 ASCII 名字，再换更重的转义方案。
+func StripPackagePath(raw string) string {
+	name := raw
+	if idx := strings.LastIndex(name, "."); idx >= 0 {
+		name = name[idx+1:]
+	}
+	if !toolNameRe.MatchString(name) {
+		panic(fmt.Sprintf("tools: function name %q (from %q) does not match ^[a-zA-Z0-9_-]+$; rename to ASCII identifier", name, raw))
+	}
+	return name
+}
+
+var toolNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// NameStrategy 当前生效的命名策略。改这一行即可全局切换。
+var NameStrategy NameTransformer = StripPackagePath
 
 // Registry 工具注册表：name -> (fn, desc)。fn 必须为 func(ctx context.Context, args *T) string，结果直接作为 ToolMessage 内容。
 type Registry struct {
@@ -41,7 +72,7 @@ func New(args ...any) *Registry {
 		if t.Kind() != reflect.Func {
 			panic("tools: fn must be func")
 		}
-		name := runtime.FuncForPC(v.Pointer()).Name()
+		name := NameStrategy(runtime.FuncForPC(v.Pointer()).Name())
 		if t.NumIn() != 2 || t.NumOut() != 1 {
 			panic("tools: fn must be func(ctx context.Context, args *T) string, not method")
 		}
